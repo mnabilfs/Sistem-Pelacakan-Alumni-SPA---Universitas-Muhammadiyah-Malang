@@ -1,0 +1,101 @@
+import { NavLink, useLocation } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  Users,
+  Settings2,
+  CalendarClock,
+  Radar,
+  FileBarChart,
+  GraduationCap,
+} from 'lucide-react';
+
+const navItems = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/data-alumni', label: 'Data Alumni Master', icon: Users },
+  { to: '/parameter', label: 'Parameter Pelacakan', icon: Settings2 },
+  { to: '/jadwal', label: 'Jadwal Pelacakan', icon: CalendarClock },
+  { to: '/jalankan', label: 'Jalankan Pelacakan', icon: Radar },
+  { to: '/laporan', label: 'Laporan Jejak Alumni', icon: FileBarChart },
+];
+
+const pageTitles = {
+  '/': 'Dashboard',
+  '/data-alumni': 'Data Alumni Master',
+  '/parameter': 'Parameter Pelacakan',
+  '/jadwal': 'Jadwal Pelacakan',
+  '/jalankan': 'Jalankan Pelacakan',
+  '/laporan': 'Laporan Jejak Alumni',
+};
+
+export default function Layout({ children }) {
+  const location = useLocation();
+  const title = pageTitles[location.pathname] || 'Dashboard';
+
+  return (
+    <div className="app-layout">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <div className="sidebar-logo">
+            <div className="sidebar-logo-icon">
+              <GraduationCap size={22} />
+            </div>
+            <div className="sidebar-logo-text">
+              <h2>SPA</h2>
+              <span>Pelacakan Alumni</span>
+            </div>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+          <div className="sidebar-section-label">Menu Utama</div>
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `sidebar-link${isActive ? ' active' : ''}`
+              }
+              end={item.to === '/'}
+            >
+              <item.icon size={18} />
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px', height: '32px', borderRadius: '50%',
+              background: 'var(--gradient-blue)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: 'white', fontSize: '13px', fontWeight: '700',
+            }}>A</div>
+            <div>
+              <div style={{ fontSize: '12.5px', fontWeight: '600' }}>Admin Kampus</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>admin@umm.ac.id</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="main-content">
+        <header className="main-header">
+          <h1>{title}</h1>
+          <div className="main-header-right">
+            <div className="header-badge">
+              <span className="header-badge-dot"></span>
+              Sistem Aktif
+            </div>
+          </div>
+        </header>
+
+        <main className="page-content">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
