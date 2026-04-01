@@ -7,29 +7,35 @@ import {
   Radar,
   FileBarChart,
   GraduationCap,
+  Globe,
+  Database,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/pddikti-search', label: 'Search PDDikti', icon: Globe },
   { to: '/data-alumni', label: 'Data Alumni Master', icon: Users },
   { to: '/parameter', label: 'Parameter Pelacakan', icon: Settings2 },
-  { to: '/jadwal', label: 'Jadwal Pelacakan', icon: CalendarClock },
   { to: '/jalankan', label: 'Jalankan Pelacakan', icon: Radar },
   { to: '/laporan', label: 'Laporan Jejak Alumni', icon: FileBarChart },
+  { to: '/jadwal', label: 'Jadwal Pelacakan', icon: CalendarClock },
+  { to: '/audit', label: 'Audit Report (SQLite)', icon: Database },
 ];
 
 const pageTitles = {
   '/': 'Dashboard',
+  '/pddikti-search': 'Pencarian PDDikti',
   '/data-alumni': 'Data Alumni Master',
   '/parameter': 'Parameter Pelacakan',
-  '/jadwal': 'Jadwal Pelacakan',
   '/jalankan': 'Jalankan Pelacakan',
   '/laporan': 'Laporan Jejak Alumni',
+  '/jadwal': 'Jadwal Pelacakan',
+  '/audit': 'Log Audit Pelacakan',
 };
 
 export default function Layout({ children }) {
   const location = useLocation();
-  const title = pageTitles[location.pathname] || 'Dashboard';
+  const title = pageTitles[location.pathname] || (location.pathname.startsWith('/analyze/') ? 'Analyze Profile' : 'Dashboard');
 
   return (
     <div className="app-layout">

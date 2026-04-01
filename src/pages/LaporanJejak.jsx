@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   FileBarChart,
   Search,
@@ -14,18 +14,42 @@ import {
   Clock,
   Link2,
 } from 'lucide-react';
+import { getAuditReport } from '../utils/sqliteMock';
 
-export default function LaporanJejak({ alumni, trackingResults }) {
+export default function LaporanJejak() {
+  const [alumniData, setAlumniData] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedAlumni, setSelectedAlumni] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchReports = async () => {
+      setIsLoading(true);
+      const logs = await getAuditReport();
+      // Hanya ambil log yang sudah pernah di-tracking (ada properti trackingData)
+      const trackedLogs = logs.filter(log => log.trackingData);
+      setAlumniData(trackedLogs);
+      setIsLoading(false);
+    };
+    fetchReports();
+  }, []);
 
   const enrichedResults = useMemo(() => {
-    return trackingResults.map(r => {
-      const al = alumni.find(a => a.id === r.alumniId);
-      return { ...r, alumni: al };
-    }).filter(r => r.alumni);
-  }, [trackingResults, alumni]);
+    return alumniData.map(log => {
+      const pddikti = log.rawData?.pddikti || {};
+      return {
+        ...log.trackingData,
+        alumniId: log.id,
+        alumni: {
+          nama: log.nama,
+          prodi: pddikti.prodi || 'Unknown',
+          tahunLulus: pddikti.statusAkhir?.includes('20') ? pddikti.statusAkhir.split(' ')[0] : 'Unknown',
+          kota: 'Indonesia'
+        }
+      };
+    });
+  }, [alumniData]);
 
   const filtered = enrichedResults.filter(r => {
     const matchSearch = r.alumni.nama.toLowerCase().includes(searchQuery.toLowerCase());
@@ -229,12 +253,19 @@ export default function LaporanJejak({ alumni, trackingResults }) {
       </div>
 
       {/* Results List */}
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div className="card">
+          <div className="empty-state">
+            <div className="spinner" style={{ marginBottom: '16px', color: 'var(--accent-blue)', width: '32px', height: '32px' }}></div>
+            <h3>Memuat Data...</h3>
+          </div>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <FileBarChart size={40} />
             <h3>Belum Ada Laporan</h3>
-            <p>Jalankan pelacakan alumni terlebih dahulu untuk melihat laporan jejak</p>
+            <p>Jalankan pelacakan alumni terlebih dahulu untuk melihat laporan jejak dari SQLite</p>
           </div>
         </div>
       ) : (

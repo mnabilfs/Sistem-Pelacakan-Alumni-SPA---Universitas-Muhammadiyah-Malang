@@ -2,11 +2,22 @@
 export const initialSources = [
   {
     id: 1,
+    nama: "PDDikti (API Asli)",
+    url: "https://pddikti.kemdikbud.go.id",
+    tipe: "Institusi",
+    aktif: true,
+    prioritas: 1,
+    deskripsi: "Data resmi Kementerian Ristek & Dikti (Wajib)",
+    icon: "Building2",
+    cocokUntuk: ["Semua Alumni"],
+  },
+  {
+    id: 2,
     nama: "Google Scholar",
     url: "https://scholar.google.com",
     tipe: "Akademik",
     aktif: true,
-    prioritas: 1,
+    prioritas: 2,
     deskripsi: "Profil penulis & publikasi akademik",
     icon: "GraduationCap",
     cocokUntuk: ["Akademik", "Peneliti"],

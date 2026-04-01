@@ -133,6 +133,12 @@ export default function ParameterPelacakan({ sources, setSources }) {
             </thead>
             <tbody>
               <tr>
+                <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Validasi Dasar (API Asli)</td>
+                <td><span className="chip" style={{ background: 'var(--accent-blue)', color: 'white', borderColor: 'transparent' }}>PDDikti (Rone Dev)</span></td>
+                <td><span className="chip">Sistem Internal UMM</span></td>
+                <td>-</td>
+              </tr>
+              <tr>
                 <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Alumni Akademik / Peneliti</td>
                 <td><span className="chip">Google Scholar</span></td>
                 <td><span className="chip">ORCID</span></td>

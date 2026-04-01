@@ -45,8 +45,10 @@ const instansiList = [
 
 const sumberList = ["LinkedIn", "Google Scholar", "GitHub", "ResearchGate", "ORCID", "Situs Kampus", "Google Web"];
 
-// Step 2: Simulate searching public sources
-export function simulateSearch(alumni, queries) {
+import { getMahasiswaPDDiktiByNim } from './pddiktiService';
+
+// Step 2: Simulate searching public sources (Now includes Real PDDikti API integration)
+export async function simulateSearch(alumni, queries) {
   const numResults = Math.floor(Math.random() * 3) + 1;
   const candidates = [];
 
@@ -78,6 +80,39 @@ export function simulateSearch(alumni, queries) {
         }
       ]
     });
+  }
+
+  // --- INTEGRASI PDDikti API RONE DEV (REAL DATA) ---
+  try {
+    const pDetail = await getMahasiswaPDDiktiByNim(alumni.nim);
+    if (pDetail && pDetail.nama) {
+      candidates.push({
+        id: `pddikti-${alumni.id}`,
+        nama: pDetail.nama,
+        sumber: "PDDikti (API Asli)",
+        jabatan: `Mahasiswa ${pDetail.jenjang || 'S1'}`,
+        instansi: pDetail.pt,
+        lokasi: "Indonesia",
+        sinyal: {
+          namaMatch: true,
+          afiliasiMatch: true,
+          timelineMatch: true,
+          bidangMatch: true,
+        },
+        skor: 100,
+        cocok: "Kemungkinan Kuat",
+        bukti: [
+          {
+            tipe: `Profil PDDikti`,
+            judul: `${pDetail.nama} - ${pDetail.statusAkhir}`,
+            url: `https://pddikti.kemdikbud.go.id/data_mahasiswa/${pDetail.link_detail}`,
+            snippet: `Program Studi: ${pDetail.prodi} | NIM: ${pDetail.nim}`
+          }
+        ]
+      });
+    }
+  } catch (err) {
+    console.error("Gagal menarik PDDikti di tracking", err);
   }
 
   return candidates;
@@ -160,10 +195,9 @@ export async function runTrackingSimulation(alumni, onStep) {
 
   // Step 2: Pencarian di Sumber Publik
   await delay(400);
-  onStep?.({ step: 2, label: "Mencari di Sumber Publik", detail: "Memindai LinkedIn, Scholar, GitHub, ORCID..." });
-  await delay(1200);
-  const candidates = simulateSearch(alumni, queries);
-  onStep?.({ step: 2, label: "Mencari di Sumber Publik", detail: `${candidates.length} kandidat ditemukan`, done: true });
+  onStep?.({ step: 2, label: "Mencari di Sumber Publik & PDDikti Asli", detail: "Memindai API PDDikti Rone Dev, LinkedIn, Scholar..." });
+  const candidates = await simulateSearch(alumni, queries);
+  onStep?.({ step: 2, label: "Mencari di Sumber Publik & PDDikti Asli", detail: `${candidates.length} kandidat ditemukan (Termasuk Bukti PDDikti)`, done: true });
 
   // Step 3: Ekstraksi & Scoring
   await delay(400);

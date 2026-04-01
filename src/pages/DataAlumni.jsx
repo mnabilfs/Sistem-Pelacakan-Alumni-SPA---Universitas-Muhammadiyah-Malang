@@ -1,87 +1,60 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Plus,
   Search,
-  Edit3,
   Trash2,
-  X,
   UserPlus,
-  Filter,
+  RefreshCw
 } from 'lucide-react';
-import { getNextId } from '../data/mockAlumni';
+import { getAuditReport, deleteEvidenceById } from '../utils/sqliteMock';
 
-export default function DataAlumni({ alumni, setAlumni }) {
+export default function DataAlumni() {
+  const navigate = useNavigate();
+  const [alumni, setAlumni] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterProdi, setFilterProdi] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editingAlumni, setEditingAlumni] = useState(null);
-  const [form, setForm] = useState({
-    nama: '', nim: '', prodi: 'Informatika', tahunLulus: '',
-    email: '', kota: '', variasiNama: '', kataKunciAfiliasi: '', kataKunciKonteks: ''
-  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    const logs = await getAuditReport();
+    setAlumni(logs.map(log => ({
+      ...log,
+      prodi: log.rawData?.pddikti?.prodi || 'Unknown',
+    })));
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const filtered = alumni.filter(a => {
     const matchSearch = a.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.nim.includes(searchQuery) || a.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchProdi = !filterProdi || a.prodi === filterProdi;
-    const matchStatus = !filterStatus || a.statusPelacakan === filterStatus;
+      a.nim.includes(searchQuery);
+    const matchProdi = !filterProdi || (a.prodi && a.prodi.includes(filterProdi));
+    const matchStatus = !filterStatus || a.matchStatus === filterStatus;
     return matchSearch && matchProdi && matchStatus;
   });
 
   const openAdd = () => {
-    setEditingAlumni(null);
-    setForm({ nama: '', nim: '', prodi: 'Informatika', tahunLulus: '', email: '', kota: '', variasiNama: '', kataKunciAfiliasi: '', kataKunciKonteks: '' });
-    setShowModal(true);
+    navigate('/pddikti-search');
   };
 
-  const openEdit = (al) => {
-    setEditingAlumni(al);
-    setForm({
-      nama: al.nama, nim: al.nim, prodi: al.prodi, tahunLulus: al.tahunLulus.toString(),
-      email: al.email, kota: al.kota,
-      variasiNama: (al.variasiNama || []).join(', '),
-      kataKunciAfiliasi: (al.kataKunciAfiliasi || []).join(', '),
-      kataKunciKonteks: (al.kataKunciKonteks || []).join(', '),
-    });
-    setShowModal(true);
-  };
-
-  const handleSave = () => {
-    const newAlumni = {
-      id: editingAlumni ? editingAlumni.id : getNextId(),
-      nama: form.nama,
-      nim: form.nim,
-      prodi: form.prodi,
-      tahunLulus: parseInt(form.tahunLulus) || 2023,
-      email: form.email,
-      kota: form.kota,
-      statusPelacakan: editingAlumni ? editingAlumni.statusPelacakan : 'Belum Dilacak',
-      variasiNama: form.variasiNama.split(',').map(s => s.trim()).filter(Boolean),
-      kataKunciAfiliasi: form.kataKunciAfiliasi.split(',').map(s => s.trim()).filter(Boolean),
-      kataKunciKonteks: form.kataKunciKonteks.split(',').map(s => s.trim()).filter(Boolean),
-    };
-
-    if (editingAlumni) {
-      setAlumni(prev => prev.map(a => a.id === editingAlumni.id ? newAlumni : a));
-    } else {
-      setAlumni(prev => [...prev, newAlumni]);
+  const handleDelete = async (id) => {
+    if (window.confirm('Yakin ingin menghapus data alumni ini dari sistem lokal?')) {
+      await deleteEvidenceById(id);
+      fetchData();
     }
-    setShowModal(false);
-  };
-
-  const handleDelete = (id) => {
-    setAlumni(prev => prev.filter(a => a.id !== id));
   };
 
   const getStatusClass = (status) => {
-    switch (status) {
-      case 'Teridentifikasi': return 'teridentifikasi';
-      case 'Perlu Verifikasi': return 'perlu-verifikasi';
-      case 'Belum Dilacak': return 'belum-dilacak';
-      case 'Belum Ditemukan': return 'belum-ditemukan';
-      default: return 'belum-dilacak';
-    }
+    if (!status) return 'belum-dilacak';
+    if (status.includes('Teridentifikasi')) return 'teridentifikasi';
+    if (status.includes('Verifikasi')) return 'perlu-verifikasi';
+    if (status.includes('Mismatch')) return 'belum-ditemukan';
+    return 'belum-dilacak';
   };
 
   return (
@@ -93,7 +66,7 @@ export default function DataAlumni({ alumni, setAlumni }) {
             <Search size={16} />
             <input
               className="form-input"
-              placeholder="Cari nama, NIM, atau email..."
+              placeholder="Cari nama atau NIM..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -102,19 +75,23 @@ export default function DataAlumni({ alumni, setAlumni }) {
             <option value="">Semua Prodi</option>
             <option value="Informatika">Informatika</option>
             <option value="Sistem Informasi">Sistem Informasi</option>
+            <option value="Manajemen">Manajemen</option>
+            <option value="Agribisnis">Agribisnis</option>
           </select>
           <select className="form-select" style={{ width: '180px' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-            <option value="">Semua Status</option>
+            <option value="">Semua Status Audit</option>
             <option value="Teridentifikasi">Teridentifikasi</option>
             <option value="Perlu Verifikasi">Perlu Verifikasi</option>
-            <option value="Belum Dilacak">Belum Dilacak</option>
-            <option value="Belum Ditemukan">Belum Ditemukan</option>
+            <option value="Mismatch">Mismatch</option>
           </select>
         </div>
         <div className="toolbar-right">
+          <button className="btn btn-secondary" onClick={fetchData} title="Refresh Data">
+             <RefreshCw size={16} className={isLoading ? "spinner" : ""} />
+          </button>
           <button className="btn btn-primary" onClick={openAdd}>
-            <Plus size={16} />
-            Tambah Alumni
+            <Search size={16} />
+            Cari PDDikti
           </button>
         </div>
       </div>
@@ -126,21 +103,25 @@ export default function DataAlumni({ alumni, setAlumni }) {
             <tr>
               <th>Nama</th>
               <th>NIM</th>
-              <th>Prodi</th>
-              <th>Tahun Lulus</th>
-              <th>Kota</th>
-              <th>Status</th>
+              <th>Program Studi</th>
+              <th>Status PDDikti</th>
+              <th>Status Audit</th>
+              <th>Skor Tracking</th>
               <th>Aksi</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {isLoading ? (
+               <tr>
+               <td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Loading...</td>
+             </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan="7">
                   <div className="empty-state" style={{ padding: '40px 20px' }}>
                     <UserPlus size={36} />
-                    <h3>Tidak ada data</h3>
-                    <p>Tidak ditemukan alumni yang sesuai filter</p>
+                    <h3>Data Master Kosong</h3>
+                    <p>Lakukan pencarian PDDikti dan simpan data untuk memasukkannya ke Master Data.</p>
                   </div>
                 </td>
               </tr>
@@ -150,15 +131,18 @@ export default function DataAlumni({ alumni, setAlumni }) {
                   <td style={{ color: 'var(--text-primary)', fontWeight: '600' }}>{al.nama}</td>
                   <td><code style={{ fontSize: '12px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px' }}>{al.nim}</code></td>
                   <td>{al.prodi}</td>
-                  <td>{al.tahunLulus}</td>
-                  <td>{al.kota}</td>
-                  <td><span className={`status-badge ${getStatusClass(al.statusPelacakan)}`}>{al.statusPelacakan}</span></td>
+                  <td>{al.pddiktiStatus}</td>
+                  <td><span className={`status-badge ${getStatusClass(al.matchStatus)}`}>{al.matchStatus || 'Belum Dilacak'}</span></td>
+                  <td>
+                    {al.confidenceScore ? (
+                        <span className={`confidence-text ${al.confidenceScore >= 75 ? 'high' : al.confidenceScore >= 45 ? 'medium' : 'low'}`} style={{ fontSize: '14px' }}>
+                            {al.confidenceScore}%
+                        </span>
+                    ) : '-'}
+                  </td>
                   <td>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openEdit(al)} title="Edit">
-                        <Edit3 size={13} />
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(al.id)} title="Hapus">
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(al.id)} title="Hapus dari Data Master">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -171,75 +155,8 @@ export default function DataAlumni({ alumni, setAlumni }) {
       </div>
 
       <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-muted)' }}>
-        Menampilkan {filtered.length} dari {alumni.length} alumni
+        Menampilkan {filtered.length} dari {alumni.length} alumni (Bersumber dari SQLite Local)
       </div>
-
-      {/* Modal Add/Edit */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{editingAlumni ? 'Edit Alumni' : 'Tambah Alumni Baru'}</h3>
-              <button className="btn btn-icon btn-secondary" onClick={() => setShowModal(false)}>
-                <X size={16} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="two-col">
-                <div className="form-group">
-                  <label className="form-label">Nama Lengkap</label>
-                  <input className="form-input" value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Muhammad Rizky Pratama" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">NIM</label>
-                  <input className="form-input" value={form.nim} onChange={e => setForm({ ...form, nim: e.target.value })} placeholder="201910370311001" />
-                </div>
-              </div>
-              <div className="two-col">
-                <div className="form-group">
-                  <label className="form-label">Program Studi</label>
-                  <select className="form-select" value={form.prodi} onChange={e => setForm({ ...form, prodi: e.target.value })}>
-                    <option>Informatika</option>
-                    <option>Sistem Informasi</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tahun Lulus</label>
-                  <input className="form-input" type="number" value={form.tahunLulus} onChange={e => setForm({ ...form, tahunLulus: e.target.value })} placeholder="2023" />
-                </div>
-              </div>
-              <div className="two-col">
-                <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input className="form-input" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="alumni@email.com" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Kota</label>
-                  <input className="form-input" value={form.kota} onChange={e => setForm({ ...form, kota: e.target.value })} placeholder="Malang" />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Variasi Nama (pisahkan koma)</label>
-                <input className="form-input" value={form.variasiNama} onChange={e => setForm({ ...form, variasiNama: e.target.value })} placeholder="M. Rizky Pratama, Rizky Pratama" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Kata Kunci Afiliasi (pisahkan koma)</label>
-                <input className="form-input" value={form.kataKunciAfiliasi} onChange={e => setForm({ ...form, kataKunciAfiliasi: e.target.value })} placeholder="UMM, Universitas Muhammadiyah Malang" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Kata Kunci Konteks (pisahkan koma)</label>
-                <input className="form-input" value={form.kataKunciKonteks} onChange={e => setForm({ ...form, kataKunciKonteks: e.target.value })} placeholder="Software Engineer, Malang, 2023" />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Batal</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={!form.nama || !form.nim}>
-                {editingAlumni ? 'Simpan Perubahan' : 'Tambah Alumni'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
