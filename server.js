@@ -136,12 +136,18 @@ app.get('/api/pddikti/detail', async (req, res) => {
 });
 
 const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`
+
+// Vercel Serverless environment variables flag
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`
 =============================================
 🌍 Backend Proxy Terhubung! 
 => Menggunakan Open API: pddikti.rone.dev
 Port: ${PORT}
 =============================================
-  `);
-});
+    `);
+  });
+}
+
+export default app;
