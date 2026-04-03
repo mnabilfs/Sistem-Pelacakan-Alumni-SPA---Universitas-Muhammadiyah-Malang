@@ -13,10 +13,10 @@ export default function Login({ onLogin }) {
     setLoading(true);
 
     setTimeout(() => {
-      const adminUsername = import.meta.env.VITE_ADMIN_USERNAME || 'admin';
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123';
-      const userUsername = import.meta.env.VITE_USER_USERNAME || 'user';
-      const userPassword = import.meta.env.VITE_USER_PASSWORD || 'user123';
+      const adminUsername = import.meta.env.VITE_ADMIN_USERNAME;
+      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+      const userUsername = import.meta.env.VITE_USER_USERNAME;
+      const userPassword = import.meta.env.VITE_USER_PASSWORD;
 
       if (username === adminUsername && password === adminPassword) {
         onLogin('admin');
