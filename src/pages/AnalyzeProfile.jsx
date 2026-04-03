@@ -20,6 +20,7 @@ export default function AnalyzeProfile() {
 
   const [pddiktiData, setPddiktiData] = useState(null);
   const [savedEvidence, setSavedEvidence] = useState(null);
+  const [masterData, setMasterData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -38,8 +39,18 @@ export default function AnalyzeProfile() {
         const evidence = await getEvidenceByNim(nim);
         setSavedEvidence(evidence);
 
+        try {
+          const mRes = await fetch(`http://localhost:3001/api/master/${nim}`);
+          if (mRes.ok) {
+            const mData = await mRes.json();
+            setMasterData(mData);
+          }
+        } catch (e) {
+          console.error("Master data fetch error:", e);
+        }
+
         if (pData) {
-          calculateInitialScore(pData, evidence);
+          calculateInitialScore(pData, evidence, masterData);
         }
       } catch (err) {
         console.error(err);
@@ -51,7 +62,7 @@ export default function AnalyzeProfile() {
     if (nim) fetchData();
   }, [nim]);
 
-  const calculateInitialScore = (pData, evData) => {
+  const calculateInitialScore = (pData, evData, mData) => {
     let score = 0;
     
     // NIM Match
@@ -85,8 +96,8 @@ export default function AnalyzeProfile() {
         notes: notes,
       };
 
-      // Since we dropped mock local data, we just pass empty object or basic info as localData
-      const localDataSkeleton = {
+      // Since we drop mock local data, we just pass empty object or basic info as localData
+      const localDataSkeleton = masterData || {
           nama: pddiktiData.nama,
           nim: pddiktiData.nim,
           prodi: pddiktiData.prodi
@@ -218,9 +229,45 @@ export default function AnalyzeProfile() {
           ) : (
              <div className="empty-state" style={{ padding: '20px 0' }}>
                <AlertTriangle size={32} style={{ color: 'var(--accent-amber)', marginBottom: '8px', margin: '0 auto' }} />
-               <h4 style={{ fontSize: '14px', marginBottom: '4px' }}>Data Baru (Belum Tersimpan)</h4>
-               <p style={{ fontSize: '12px' }}>NIM {pddiktiData.nim} belum ada di Data Alumni lokal Anda. Lakukan validasi dan simpan data ini untuk melakukan pelacakan jejak alumni.</p>
+               <h4 style={{ fontSize: '14px', marginBottom: '4px' }}>Data Pelacakan Baru (Belum Tersimpan)</h4>
+               <p style={{ fontSize: '12px' }}>Lakukan pelacakan dan simpan data ini untuk melakukan pelacakan jejak alumni.</p>
              </div>
+          )}
+
+          {masterData ? (
+            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <h4 style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '4px' }}>Data Ditemukan di Sistem Database Alumni:</h4>
+              <div className="detail-item">
+                <label>Nama Lulusan</label>
+                <strong>{masterData.nama}</strong>
+              </div>
+              <div className="detail-item">
+                <label>NIM</label>
+                <strong>{masterData.nim}</strong>
+              </div>
+              <div className="detail-item">
+                <label>Tahun Masuk</label>
+                <strong>{masterData.tahun_masuk}</strong>
+              </div>
+              <div className="detail-item">
+                <label>Tanggal Lulus</label>
+                <strong>{masterData.tanggal_lulus}</strong>
+              </div>
+              <div className="detail-item">
+                <label>Fakultas</label>
+                <strong>{masterData.fakultas}</strong>
+              </div>
+              <div className="detail-item">
+                <label>Program Studi</label>
+                <strong>{masterData.program_studi}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state" style={{ padding: '12px', background: 'var(--bg-input)', marginTop: '20px' }}>
+               <AlertTriangle size={24} style={{ color: 'var(--accent-red)', marginBottom: '8px', margin: '0 auto' }} />
+               <h4 style={{ fontSize: '12px', marginBottom: '4px' }}>Tidak Ada di Master Data (CSV)</h4>
+               <p style={{ fontSize: '11px' }}>NIM {pddiktiData.nim} tidak ditemukan dalam daftar alumni master.</p>
+            </div>
           )}
         </div>
       </div>
