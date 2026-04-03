@@ -10,6 +10,7 @@ import {
   Database,
   ArrowLeft,
   XCircle,
+  UserCheck
 } from 'lucide-react';
 import { getMahasiswaPDDiktiByNim } from '../utils/pddiktiService';
 import { saveTrackingEvidence, getEvidenceByNim } from '../utils/sqliteMock';
@@ -51,6 +52,15 @@ export default function AnalyzeProfile() {
 
         if (pData) {
           calculateInitialScore(pData, evidence, masterData);
+        } else {
+          // If no PDDikti data, fallback initialization
+          if (evidence) {
+            setVerificationStatus(evidence.matchStatus);
+            setConfidenceScore(evidence.confidenceScore);
+          } else {
+            setVerificationStatus('Mismatch');
+            setConfidenceScore(0);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -96,14 +106,26 @@ export default function AnalyzeProfile() {
         notes: notes,
       };
 
-      // Since we drop mock local data, we just pass empty object or basic info as localData
-      const localDataSkeleton = masterData || {
-          nama: pddiktiData.nama,
-          nim: pddiktiData.nim,
-          prodi: pddiktiData.prodi
+      let localDataSkeleton = masterData || {
+          nama: pddiktiData ? pddiktiData.nama : nim,
+          nim: pddiktiData ? pddiktiData.nim : nim,
+          prodi: pddiktiData ? pddiktiData.prodi : ''
+      };
+      
+      // Preserve enrichment data if the user had previously filled it out
+      if (savedEvidence?.rawData?.local?.enrichment) {
+          localDataSkeleton.enrichment = savedEvidence.rawData.local.enrichment;
+      }
+
+      const fallbackPddikti = pddiktiData || {
+          nama: masterData?.nama || 'Unknown',
+          nim: nim,
+          statusAkhir: 'Tidak Diketahui',
+          pt: masterData?.fakultas || '-',
+          prodi: masterData?.program_studi || '-'
       };
 
-      await saveTrackingEvidence(pddiktiData, localDataSkeleton, result);
+      await saveTrackingEvidence(fallbackPddikti, localDataSkeleton, result);
       
       navigate('/data-alumni');
     } catch (err) {
@@ -119,17 +141,6 @@ export default function AnalyzeProfile() {
         <Loader2 size={40} className="spinner" style={{ color: 'var(--accent-blue)', margin: '0 auto 16px' }} />
         <h3>Robot Sedang Menganalisis Detail...</h3>
         <p>Mengambil detail validasi riwayat kemahasiswaan dari API PDDikti.</p>
-      </div>
-    );
-  }
-
-  if (!pddiktiData) {
-    return (
-      <div className="empty-state">
-        <XCircle size={44} style={{ opacity: 0.5, color: 'var(--accent-red)', margin: '0 auto 16px' }} />
-        <h3>Data Tidak Valid</h3>
-        <p>NIM {nim} gagal dianalisis karena server PDDikti tidak merespons atau bukan Lulus.</p>
-        <button className="btn btn-secondary" onClick={() => navigate('/pddikti-search')} style={{ marginTop: '16px' }}>Kembali</button>
       </div>
     );
   }
@@ -171,28 +182,38 @@ export default function AnalyzeProfile() {
             Data ASLI dari Web PDDikti
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div className="detail-item">
-              <label>Nama Mahasiswa</label>
-              <strong>{pddiktiData.nama}</strong>
-            </div>
-            <div className="detail-item">
-              <label>NIM</label>
-              <code style={{ fontSize: '12px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px' }}>{pddiktiData.nim}</code>
-            </div>
-            <div className="detail-item">
-              <label>Perguruan Tinggi</label>
-              <strong>{pddiktiData.pt}</strong>
-            </div>
-            <div className="detail-item">
-              <label>Prodi / Jenjang</label>
-              <strong>{pddiktiData.prodi} / {pddiktiData.jenjang}</strong>
-            </div>
-            <div className="detail-item">
-              <label>Status Saat Ini (Real-Time)</label>
-              <span className={`status-badge ${pddiktiData.statusAkhir === 'Lulus' ? 'teridentifikasi' : 'perlu-verifikasi'}`}>
-                {pddiktiData.statusAkhir}
-              </span>
-            </div>
+            {pddiktiData ? (
+             <>
+              <div className="detail-item">
+                <label>Nama Mahasiswa</label>
+                <strong>{pddiktiData.nama}</strong>
+              </div>
+              <div className="detail-item">
+                <label>NIM</label>
+                <code style={{ fontSize: '12px', background: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px' }}>{pddiktiData.nim}</code>
+              </div>
+              <div className="detail-item">
+                <label>Perguruan Tinggi</label>
+                <strong>{pddiktiData.pt}</strong>
+              </div>
+              <div className="detail-item">
+                <label>Prodi / Jenjang</label>
+                <strong>{pddiktiData.prodi} / {pddiktiData.jenjang}</strong>
+              </div>
+              <div className="detail-item">
+                <label>Status Saat Ini (Real-Time)</label>
+                <span className={`status-badge ${pddiktiData.statusAkhir === 'Lulus' ? 'teridentifikasi' : 'perlu-verifikasi'}`}>
+                  {pddiktiData.statusAkhir}
+                </span>
+              </div>
+             </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--accent-red)' }}>
+                <XCircle size={32} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                <strong>Data PDDikti Tidak Ditemukan</strong>
+                <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>Mahasiswa ini mungkin belum terdaftar di DIKTI atau API timeout.</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -234,6 +255,20 @@ export default function AnalyzeProfile() {
              </div>
           )}
 
+          {savedEvidence?.rawData?.local?.enrichment && (
+            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px dashed var(--border-color)', paddingTop: '16px', background: 'var(--bg-input)', padding: '16px', borderRadius: '8px' }}>
+               <h4 style={{ fontSize: '13px', color: 'var(--accent-purple)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                 <UserCheck size={14} /> Update Profil oleh Alumni (Menunggu Verifikasi)
+               </h4>
+               <div className="detail-item"><label>Status Kerja</label><strong>{savedEvidence.rawData.local.enrichment.statusKerja}</strong></div>
+               <div className="detail-item"><label>Tempat Kerja</label><strong>{savedEvidence.rawData.local.enrichment.tempatKerja || '-'}</strong></div>
+               <div className="detail-item"><label>Posisi</label><strong>{savedEvidence.rawData.local.enrichment.posisi || '-'}</strong></div>
+               <div className="detail-item"><label>Email</label><strong>{savedEvidence.rawData.local.enrichment.email || '-'}</strong></div>
+               <div className="detail-item"><label>No Telepon</label><strong>{savedEvidence.rawData.local.enrichment.phone || '-'}</strong></div>
+               <div className="detail-item"><label>LinkedIn</label><strong>{savedEvidence.rawData.local.enrichment.linkedin || '-'}</strong></div>
+            </div>
+          )}
+
           {masterData ? (
             <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
               <h4 style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '4px' }}>Data Ditemukan di Sistem Database Alumni:</h4>
@@ -272,11 +307,10 @@ export default function AnalyzeProfile() {
         </div>
       </div>
 
-      {!savedEvidence && (
         <div className="card">
           <div className="section-title">
             {confidenceScore >= 80 ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
-            Masukan Status Awal ke Database Master (SQLite)
+            {savedEvidence ? 'Pembaruan Keputusan Audit (Update Log)' : 'Masukan Status Awal ke Database Master (SQLite)'}
           </div>
           <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', marginBottom: '16px' }}>
             Skoring otomatis deteksi kecocokan mencapai <strong style={{ color: getStatusColor(verificationStatus), marginLeft: '4px' }}>{verificationStatus}</strong>.
@@ -314,10 +348,9 @@ export default function AnalyzeProfile() {
             style={{ width: '100%', padding: '12px', fontSize: '14px', gap: '8px' }}
           >
             {isSaving ? <Loader2 size={16} className="spinner" /> : <Save size={16} />}
-            {isSaving ? 'Menyimpan Evidensi...' : 'Simpan ke Data Alumni Master'}
+            {isSaving ? 'Menyimpan Evidensi...' : (savedEvidence ? 'Perbarui Keputusan Audit' : 'Simpan ke Data Alumni Master')}
           </button>
         </div>
-      )}
     </div>
   );
 }
