@@ -41,7 +41,8 @@ export default function AnalyzeProfile() {
         setSavedEvidence(evidence);
 
         try {
-          const mRes = await fetch(`http://localhost:3001/api/master/${nim}`);
+          const apiBase = import.meta.env.VITE_API_BASE || '/api';
+          const mRes = await fetch(`${apiBase}/master/${nim}`);
           if (mRes.ok) {
             const mData = await mRes.json();
             setMasterData(mData);
