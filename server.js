@@ -1,20 +1,17 @@
 import express from 'express';
 import cors from 'cors';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import { createClient } from '@supabase/supabase-js';
 
-let db;
-async function setupDb() {
-  db = await open({
-    filename: './database.sqlite',
-    driver: sqlite3.Database
-  });
-}
-setupDb();
+// ─── Supabase Setup ────────────────────────────────────────────────────────────
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ─── PDDikti Proxy (tidak berubah) ─────────────────────────────────────────────
 
 app.get('/api/pddikti/search', async (req, res) => {
   const query = req.query.q;
@@ -22,13 +19,8 @@ app.get('/api/pddikti/search', async (req, res) => {
 
   const queryLower = query.toLowerCase().trim();
   const isNimMode = /^\d+$/.test(queryLower);
-  
-  // Agar pencarian nama yang umum (misal "anis") tidak memakan limit 100 data 
-  // dari API untuk universitas lain, kita tambahkan kata kunci universitas.
-  // Tapi jika query adalah NIM (angka), kita kirim murni karena PDDikti lebih akurat untuk NIM.
   const roneQuery = isNimMode ? queryLower : `${queryLower} muhammadiyah malang`;
 
-  // Log ke terminal server agar user tahu API rone.dev yang dipakai
   console.log(`[RONE API Proxy] Memproses Pencarian Asli: "${query}" => Dikirim ke Rone API: "${roneQuery}"`);
   
   try {
@@ -36,42 +28,28 @@ app.get('/api/pddikti/search', async (req, res) => {
     if (!response.ok) throw new Error(`Rone Dev Error: ${response.status}`);
     
     let data;
-    try {
-      data = await response.json();
-    } catch (e) {
-      data = []; // jika bukan json (error response html, dsb)
-    }
-
+    try { data = await response.json(); } catch (e) { data = []; }
     if (!Array.isArray(data)) data = [];
     
-    // Mapping format sesuai kebutuhan UI Frontend
     const mappedResults = data.map(mhs => ({
       id: mhs.id,
-      link_detail: mhs.id, 
+      link_detail: mhs.id,
       nama: mhs.nama,
       nim: mhs.nim,
       pt: mhs.nama_pt,
       prodi: mhs.nama_prodi,
-      jenjang: "S1",   
+      jenjang: "S1",
       statusAkhir: "Perlu Cek Detail",
       tahunMasuk: "-"
     }));
 
-    // 1. Filter Universitasnya (Hanya UMM)
     const ummFiltered = mappedResults.filter(r => r.pt && r.pt.toLowerCase().includes('muhammadiyah malang'));
-    
-    // 2. Lakukan pengecekan ketat (Strict Includes) sesuai permintaan user 
-    // karena algoritma API Rone mengembalikan banyak data fuzzy/berdekatan 
-    // yang tidak ada kaitannya dengan persisnya input (khususnya untuk NIM).
     const finalResults = ummFiltered.filter(r => {
       const matchNama = r.nama.toLowerCase().includes(queryLower);
       const matchNim = r.nim.toLowerCase().includes(queryLower);
       return matchNama || matchNim;
     });
     
-    // --- 3. Filter Hanya Alumni (Lulus) ---
-    // Karena API Search Rone tidak menyertakan status akademik, kita harus menarik
-    // API Detail untuk tiap kandidat yang lolos filter presisi batas maksimum (misal 15 teratas).
     const candidatesForDetail = finalResults.slice(0, 15);
     const graduatedResults = [];
     
@@ -83,8 +61,6 @@ app.get('/api/pddikti/search', async (req, res) => {
         if (dRes.ok) {
            const dJson = await dRes.json();
            const lowerStatus = dJson.status_saat_ini ? dJson.status_saat_ini.toLowerCase() : "";
-           
-           // Filter HANYA yang LULUS
            if (lowerStatus.includes('lulus')) {
              graduatedResults.push({
                ...mhs,
@@ -94,9 +70,7 @@ app.get('/api/pddikti/search', async (req, res) => {
              });
            }
         }
-      } catch (err) {
-         // Abaikan error individu agar tak memecah promise lain
-      }
+      } catch (err) { /* abaikan error individu */ }
     }));
     
     console.log(`[RONE API Proxy] Berhasil menyaring ${graduatedResults.length} Alumni (Lulus).`);
@@ -109,7 +83,7 @@ app.get('/api/pddikti/search', async (req, res) => {
 });
 
 app.get('/api/pddikti/detail', async (req, res) => {
-  const id = req.query.link; 
+  const id = req.query.link;
   if (!id) return res.status(400).json({ error: 'Parameter link (ID Mahasiswa base64) dibutuhkan' });
 
   console.log(`[RONE API Proxy] Ekstrak Detail Profil ID: ${id}`);
@@ -130,16 +104,14 @@ app.get('/api/pddikti/detail', async (req, res) => {
       else statusFinal = data.status_saat_ini;
     }
 
-    const detailMapping = {
+    res.json({
       nama: data.nama || '',
       nim: data.nim || '',
       pt: data.nama_pt || '',
       prodi: data.prodi || '',
       jenjang: data.jenjang || '',
       statusAkhir: statusFinal,
-    };
-
-    res.json(detailMapping);
+    });
 
   } catch (err) {
     console.error('[Error Rone Detail]', err);
@@ -147,66 +119,115 @@ app.get('/api/pddikti/detail', async (req, res) => {
   }
 });
 
-// --- NEW SQLITE ENDPOINTS ---
+// ─── Alumni Master Endpoints (Supabase) ────────────────────────────────────────
 
 app.get('/api/master', async (req, res) => {
   try {
-    const search = req.query.q || '';
-    const prodi = req.query.prodi || '';
+    const search = (req.query.q || '').trim();
+    const prodi  = (req.query.prodi || '').trim();
     const offset = parseInt(req.query.offset) || 0;
-    
-    let baseQuery = `
-      FROM alumni_master m 
-      LEFT JOIN tracking_evidences e ON TRIM(m.nim) = TRIM(e.nim) 
-      WHERE 1=1
-    `;
-    let params = [];
+
+    // Query alumni_master dengan filter dan pagination
+    let query = supabase
+      .from('alumni_master')
+      .select('nim, nama, program_studi, fakultas, tahun_masuk, tanggal_lulus', { count: 'exact' });
+
     if (search) {
-      baseQuery += ' AND (m.nama LIKE ? OR m.nim LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
+      query = query.or(`nama.ilike.%${search}%,nim.ilike.%${search}%`);
     }
     if (prodi) {
-      baseQuery += ' AND m.program_studi LIKE ?';
-      params.push(`%${prodi}%`);
+      query = query.ilike('program_studi', `%${prodi}%`);
     }
 
-    // Get total count
-    const countResult = await db.get(`SELECT COUNT(*) as total ${baseQuery}`, params);
-    
-    // Get paginated data
-    const query = `
-      SELECT m.nim, m.nama, m.program_studi as prodi, m.fakultas, m.tahun_masuk, m.tanggal_lulus,
-             e.matchStatus, e.confidenceScore, e.pddiktiStatus
-      ${baseQuery}
-      LIMIT 100 OFFSET ?
-    `;
-    params.push(offset);
-    
-    const results = await db.all(query, params);
-    res.json({ data: results, total: countResult.total });
+    const { data: alumniData, count, error } = await query.range(offset, offset + 99);
+    if (error) throw error;
+
+    // Ambil evidences untuk NIMs yang ditemukan (JOIN dalam JS)
+    let evidencesMap = {};
+    if (alumniData && alumniData.length > 0) {
+      const nims = alumniData.map(a => a.nim.trim());
+      const { data: evData } = await supabase
+        .from('tracking_evidences')
+        .select('nim, match_status, confidence_score, pddikti_status')
+        .in('nim', nims);
+
+      if (evData) {
+        evData.forEach(e => { evidencesMap[e.nim.trim()] = e; });
+      }
+    }
+
+    // Merge & mapping ke format frontend (camelCase)
+    const results = (alumniData || []).map(m => {
+      const ev = evidencesMap[m.nim.trim()] || {};
+      return {
+        nim: m.nim,
+        nama: m.nama,
+        prodi: m.program_studi,
+        fakultas: m.fakultas,
+        tahun_masuk: m.tahun_masuk,
+        tanggal_lulus: m.tanggal_lulus,
+        matchStatus: ev.match_status || null,
+        confidenceScore: ev.confidence_score || null,
+        pddiktiStatus: ev.pddikti_status || null,
+      };
+    });
+
+    res.json({ data: results, total: count || 0 });
   } catch (err) {
+    console.error('[master]', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get('/api/master/:nim', async (req, res) => {
   try {
-    const nim = req.params.nim;
-    const result = await db.get('SELECT * FROM alumni_master WHERE nim = ?', [nim]);
-    if (result) res.json(result);
-    else res.status(404).json({ error: 'Data not found in Master Alumni' });
+    const nim = req.params.nim.trim();
+    const { data, error } = await supabase
+      .from('alumni_master')
+      .select('*')
+      .eq('nim', nim)
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: 'Data not found in Master Alumni' });
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+app.delete('/api/master/:nim', async (req, res) => {
+  try {
+    const nim = req.params.nim.trim();
+    const { error } = await supabase.from('alumni_master').delete().eq('nim', nim);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Tracking Evidence Endpoints (Supabase) ────────────────────────────────────
+
 app.get('/api/evidence', async (req, res) => {
   try {
-    const results = await db.all('SELECT * FROM tracking_evidences ORDER BY timestamp DESC');
-    res.json(results.map(r => ({
+    const { data, error } = await supabase
+      .from('tracking_evidences')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    if (error) throw error;
+
+    // Map snake_case → camelCase untuk kompatibilitas frontend
+    const mapped = (data || []).map(r => ({
       ...r,
-      rawData: r.rawData ? JSON.parse(r.rawData) : null
-    })));
+      pddiktiStatus: r.pddikti_status,
+      confidenceScore: r.confidence_score,
+      matchStatus: r.match_status,
+      verifiedBy: r.verified_by,
+      rawData: r.raw_data ? (() => { try { return JSON.parse(r.raw_data); } catch { return null; } })() : null,
+    }));
+
+    res.json(mapped);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -214,16 +235,25 @@ app.get('/api/evidence', async (req, res) => {
 
 app.get('/api/evidence/:nim', async (req, res) => {
   try {
-    const nim = req.params.nim;
-    const result = await db.get('SELECT * FROM tracking_evidences WHERE nim = ?', [nim]);
-    if (result) {
-      res.json({
-        ...result,
-        rawData: result.rawData ? JSON.parse(result.rawData) : null
-      });
-    } else {
-      res.status(404).json({ error: 'Evidensi not found' });
-    }
+    const nim = req.params.nim.trim();
+    const { data, error } = await supabase
+      .from('tracking_evidences')
+      .select('*')
+      .eq('nim', nim)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: 'Evidensi not found' });
+
+    res.json({
+      ...data,
+      pddiktiStatus: data.pddikti_status,
+      confidenceScore: data.confidence_score,
+      matchStatus: data.match_status,
+      verifiedBy: data.verified_by,
+      rawData: data.raw_data ? (() => { try { return JSON.parse(data.raw_data); } catch { return null; } })() : null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -235,35 +265,29 @@ app.post('/api/evidence', async (req, res) => {
     const id = `ev-${Date.now()}`;
     const timestamp = new Date().toISOString();
     const cleanNim = (pddiktiData.nim || '').trim();
-    
-    // Hapus log lama dari mahasiswa bersangkutan jika ada (agar tidak duplicate saat di Join)
-    if (cleanNim) {
-      await db.run('DELETE FROM tracking_evidences WHERE nim = ?', [cleanNim]);
-    }
-    
-    // Jika verifiedBy 'user', pertahankan localData lama (jika ada enrichment yang perlu digabung),
-    // Tetapi karena skemanya Admin yg nge-approve, Admin tidak mengirim 'localData.enrichment'.
-    // Idealnya dikirim ulang dari frontend, tapi untuk aman kita simpan apa yang ada.
-    
-    await db.run(
-      `INSERT INTO tracking_evidences (id, timestamp, nim, nama, pddiktiStatus, confidenceScore, matchStatus, verifiedBy, notes, rawData) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        timestamp,
-        cleanNim,
-        (pddiktiData.nama || '').trim(),
-        pddiktiData.statusAkhir,
-        verificationResult.confidenceScore,
-        verificationResult.status,
-        verificationResult.verifiedBy || "SYSTEM_AUTO",
-        verificationResult.notes || "",
-        JSON.stringify({ pddikti: pddiktiData, local: localData })
-      ]
-    );
 
+    // Hapus data lama berdasar NIM agar tidak duplikat
+    if (cleanNim) {
+      await supabase.from('tracking_evidences').delete().eq('nim', cleanNim);
+    }
+
+    const { error } = await supabase.from('tracking_evidences').insert({
+      id,
+      timestamp,
+      nim: cleanNim,
+      nama: (pddiktiData.nama || '').trim(),
+      pddikti_status: pddiktiData.statusAkhir || '',
+      confidence_score: verificationResult.confidenceScore || 0,
+      match_status: verificationResult.status || '',
+      verified_by: verificationResult.verifiedBy || 'SYSTEM_AUTO',
+      notes: verificationResult.notes || '',
+      raw_data: JSON.stringify({ pddikti: pddiktiData, local: localData }),
+    });
+
+    if (error) throw error;
     res.json({ success: true, id });
   } catch (err) {
+    console.error('[post evidence]', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -271,32 +295,25 @@ app.post('/api/evidence', async (req, res) => {
 app.delete('/api/evidence/:id', async (req, res) => {
   try {
     const id = req.params.id;
-    await db.run('DELETE FROM tracking_evidences WHERE id = ?', [id]);
+    const { error } = await supabase.from('tracking_evidences').delete().eq('id', id);
+    if (error) throw error;
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.delete('/api/master/:nim', async (req, res) => {
-  try {
-    const nim = req.params.nim;
-    await db.run('DELETE FROM alumni_master WHERE nim = ?', [nim]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// ─── Server Start ──────────────────────────────────────────────────────────────
 
 const PORT = 3001;
 
-// Vercel Serverless environment variables flag
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log(`
 =============================================
 🌍 Backend Proxy Terhubung! 
-=> Menggunakan Open API: pddikti.rone.dev
+=> Database: Supabase PostgreSQL
+=> PDDikti: pddikti.rone.dev
 Port: ${PORT}
 =============================================
     `);
