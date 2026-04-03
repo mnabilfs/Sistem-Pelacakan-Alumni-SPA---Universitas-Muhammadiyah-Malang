@@ -9,6 +9,8 @@ import {
   GraduationCap,
   Globe,
   Database,
+  LogOut,
+  UserCircle
 } from 'lucide-react';
 
 const navItems = [
@@ -19,7 +21,11 @@ const navItems = [
   { to: '/jalankan', label: 'Jalankan Pelacakan', icon: Radar },
   { to: '/laporan', label: 'Laporan Jejak Alumni', icon: FileBarChart },
   { to: '/jadwal', label: 'Jadwal Pelacakan', icon: CalendarClock },
-  { to: '/audit', label: 'Audit Report (SQLite)', icon: Database },
+  { to: '/audit', label: 'Log Audit (SQLite)', icon: Database },
+];
+
+const userNavItems = [
+  { to: '/', label: 'Update Profil', icon: UserCircle },
 ];
 
 const pageTitles = {
@@ -33,9 +39,11 @@ const pageTitles = {
   '/audit': 'Log Audit Pelacakan',
 };
 
-export default function Layout({ children }) {
+export default function Layout({ children, role, onLogout }) {
   const location = useLocation();
-  const title = pageTitles[location.pathname] || (location.pathname.startsWith('/analyze/') ? 'Analyze Profile' : 'Dashboard');
+  const title = pageTitles[location.pathname] || (location.pathname.startsWith('/analyze/') ? 'Analyze Profile' : (role === 'user' ? 'Update Profil Pengguna' : 'Dashboard'));
+  
+  const activeNavItems = role === 'admin' ? navItems : userNavItems;
 
   return (
     <div className="app-layout">
@@ -55,7 +63,7 @@ export default function Layout({ children }) {
 
         <nav className="sidebar-nav">
           <div className="sidebar-section-label">Menu Utama</div>
-          {navItems.map((item) => (
+          {activeNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -70,19 +78,29 @@ export default function Layout({ children }) {
           ))}
         </nav>
 
-        <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)' }}>
+        <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
               width: '32px', height: '32px', borderRadius: '50%',
-              background: 'var(--gradient-blue)', display: 'flex',
+              background: role === 'admin' ? 'var(--gradient-blue)' : 'var(--gradient-card)', display: 'flex',
               alignItems: 'center', justifyContent: 'center',
               color: 'white', fontSize: '13px', fontWeight: '700',
-            }}>A</div>
+              border: role === 'user' ? '1px solid var(--border-color)' : 'none'
+            }}>
+              {role === 'admin' ? 'A' : 'U'}
+            </div>
             <div>
-              <div style={{ fontSize: '12.5px', fontWeight: '600' }}>Admin Kampus</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>admin@umm.ac.id</div>
+              <div style={{ fontSize: '12.5px', fontWeight: '600' }}>{role === 'admin' ? 'Admin Kampus' : 'Alumni'}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{role === 'admin' ? 'admin@umm.ac.id' : 'Akses Terbatas'}</div>
             </div>
           </div>
+          <button 
+            className="btn btn-secondary btn-sm" 
+            onClick={onLogout}
+            style={{ width: '100%', justifyContent: 'center', color: 'var(--accent-red)', borderColor: 'var(--border-color)' }}
+          >
+            <LogOut size={14} /> Keluar
+          </button>
         </div>
       </aside>
 

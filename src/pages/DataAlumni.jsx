@@ -4,7 +4,8 @@ import {
   Search,
   Trash2,
   UserPlus,
-  RefreshCw
+  RefreshCw,
+  FileCheck
 } from 'lucide-react';
 import { getMasterData, deleteMasterByNim } from '../utils/sqliteMock';
 
@@ -167,6 +168,9 @@ export default function DataAlumni() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => navigate(`/analyze/${al.nim}`)} title="Analyze Profile">
+                        <FileCheck size={13} /> Analisis
+                      </button>
                       <button className="btn btn-danger btn-sm" onClick={() => handleDelete(al.nim)} title="Hapus dari Data Master">
                         <Trash2 size={13} />
                       </button>

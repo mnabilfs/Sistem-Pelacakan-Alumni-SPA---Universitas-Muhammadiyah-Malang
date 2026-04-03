@@ -234,6 +234,16 @@ app.post('/api/evidence', async (req, res) => {
     const { pddiktiData, localData, verificationResult } = req.body;
     const id = `ev-${Date.now()}`;
     const timestamp = new Date().toISOString();
+    const cleanNim = (pddiktiData.nim || '').trim();
+    
+    // Hapus log lama dari mahasiswa bersangkutan jika ada (agar tidak duplicate saat di Join)
+    if (cleanNim) {
+      await db.run('DELETE FROM tracking_evidences WHERE nim = ?', [cleanNim]);
+    }
+    
+    // Jika verifiedBy 'user', pertahankan localData lama (jika ada enrichment yang perlu digabung),
+    // Tetapi karena skemanya Admin yg nge-approve, Admin tidak mengirim 'localData.enrichment'.
+    // Idealnya dikirim ulang dari frontend, tapi untuk aman kita simpan apa yang ada.
     
     await db.run(
       `INSERT INTO tracking_evidences (id, timestamp, nim, nama, pddiktiStatus, confidenceScore, matchStatus, verifiedBy, notes, rawData) 
@@ -241,7 +251,7 @@ app.post('/api/evidence', async (req, res) => {
       [
         id,
         timestamp,
-        (pddiktiData.nim || '').trim(),
+        cleanNim,
         (pddiktiData.nama || '').trim(),
         pddiktiData.statusAkhir,
         verificationResult.confidenceScore,
