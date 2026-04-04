@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { ShieldCheck, UserCircle2, ArrowRight, Loader2 } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -7,26 +9,49 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const adminUsername = import.meta.env.VITE_ADMIN_USERNAME;
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
-      const userUsername = import.meta.env.VITE_USER_USERNAME;
-      const userPassword = import.meta.env.VITE_USER_PASSWORD;
+    const adminUsername = import.meta.env.VITE_ADMIN_USERNAME;
+    const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
 
-      if (username === adminUsername && password === adminPassword) {
-        onLogin('admin');
-      } else if (username === userUsername && password === userPassword) {
+    // Cek admin dulu
+    if (username === adminUsername && password === adminPassword) {
+      onLogin('admin');
+      return;
+    }
+
+    // Jika bukan admin, anggap login alumni: password harus sama dengan NIM
+    if (password !== username.trim()) {
+      setError('Username atau password tidak valid!');
+      setLoading(false);
+      return;
+    }
+
+    // Verifikasi NIM ke Supabase via API
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nim: username.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        sessionStorage.setItem('userNim', data.nim);
+        sessionStorage.setItem('userName', data.nama);
+        sessionStorage.setItem('userProdi', data.prodi || '');
         onLogin('user');
       } else {
         setError('Username atau password tidak valid!');
-        setLoading(false);
       }
-    }, 800);
+    } catch (err) {
+      setError('Gagal menghubungi server. Coba lagi.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -49,18 +74,15 @@ export default function Login({ onLogin }) {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="form-group">
             <label className="form-label" style={{ fontSize: '12px' }}>Username</label>
-            <div className="search-bar" style={{ padding: '0', background: 'transparent' }}>
-               <UserCircle2 size={16} style={{ position: 'absolute', left: '12px', color: 'var(--text-muted)' }} />
-               <input
-                 className="form-input"
-                 style={{ paddingLeft: '36px', width: '100%' }}
-                 placeholder="admin / user"
-                 value={username}
-                 onChange={(e) => setUsername(e.target.value)}
-                 autoFocus
-                 required
-               />
-            </div>
+            <input
+              className="form-input"
+              style={{ width: '100%' }}
+              placeholder="NIM / Username Admin"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              required
+            />
           </div>
 
           <div className="form-group" style={{ marginBottom: '8px' }}>

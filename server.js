@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
@@ -116,6 +117,31 @@ app.get('/api/pddikti/detail', async (req, res) => {
   } catch (err) {
     console.error('[Error Rone Detail]', err);
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Auth Endpoint ─────────────────────────────────────────────────────────────
+
+// Login User: username=NIM, password=NIM → verifikasi ke Supabase
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { nim } = req.body;
+    if (!nim) return res.status(400).json({ success: false, error: 'NIM diperlukan' });
+
+    const { data, error } = await supabase
+      .from('alumni_master')
+      .select('nim, nama, program_studi, fakultas')
+      .eq('nim', nim.trim())
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ success: false, error: 'NIM tidak ditemukan dalam data alumni' });
+    }
+
+    res.json({ success: true, nim: data.nim, nama: data.nama, prodi: data.program_studi, fakultas: data.fakultas });
+  } catch (err) {
+    console.error('[auth/login]', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

@@ -26,8 +26,13 @@ function App() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('authRole');
+    sessionStorage.removeItem('userNim');
+    sessionStorage.removeItem('userName');
+    sessionStorage.removeItem('userProdi');
     setRole(null);
   };
+
+  const userNim = sessionStorage.getItem('userNim');
 
   if (!role) {
     return <Login onLogin={handleLogin} />;
@@ -52,8 +57,8 @@ function App() {
             </>
           ) : (
              <>
-              <Route path="/" element={<UserDashboard />} />
-              <Route path="*" element={<UserDashboard />} />
+              <Route path="/" element={<UserDashboard userNim={userNim} />} />
+              <Route path="*" element={<UserDashboard userNim={userNim} />} />
              </>
           )}
         </Routes>

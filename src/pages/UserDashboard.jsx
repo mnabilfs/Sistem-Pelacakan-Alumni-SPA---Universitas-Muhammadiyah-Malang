@@ -1,14 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Loader2, Save, UserCircle, Briefcase, MapPin, Link2 } from 'lucide-react';
 import { getMasterData, saveTrackingEvidence } from '../utils/sqliteMock';
 
-export default function UserDashboard() {
+export default function UserDashboard({ userNim }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [selectedAlumni, setSelectedAlumni] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+
+  const userName = sessionStorage.getItem('userName') || '';
+
+  // Auto-load alumni profile dari NIM yang login
+  useEffect(() => {
+    if (userNim && !selectedAlumni) {
+      setAutoLoading(true);
+      getMasterData(userNim, '', 0).then(res => {
+        const found = (res.data || []).find(a => a.nim.trim() === userNim.trim());
+        if (found) setSelectedAlumni(found);
+      }).catch(console.error).finally(() => setAutoLoading(false));
+    }
+  }, [userNim]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -85,11 +99,20 @@ export default function UserDashboard() {
   return (
     <div>
       <div className="card" style={{ marginBottom: '24px', background: 'var(--gradient-card)' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '8px' }}>Update Profil Alumni</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '8px' }}>
+          {userName ? `Selamat Datang, ${userName.split(' ')[0]}! 👋` : 'Update Profil Alumni'}
+        </h2>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-          Cari Data Anda berdasarkan Nama atau NIM, kemudian isi detail tambahan status bekerja dan kontak Anda.
+          {userNim ? `Login sebagai NIM: ${userNim} — isi detail tambahan profil Anda di bawah.` : 'Cari Data Anda berdasarkan Nama atau NIM, kemudian isi detail tambahan status bekerja dan kontak Anda.'}
         </p>
       </div>
+
+      {autoLoading && (
+        <div className="empty-state" style={{ padding: '40px 0' }}>
+          <Loader2 size={32} className="spinner" style={{ color: 'var(--accent-blue)', margin: '0 auto 12px' }} />
+          <p>Memuat data profil Anda...</p>
+        </div>
+      )}
 
       {!selectedAlumni && (
         <div className="card" style={{ marginBottom: '24px' }}>
