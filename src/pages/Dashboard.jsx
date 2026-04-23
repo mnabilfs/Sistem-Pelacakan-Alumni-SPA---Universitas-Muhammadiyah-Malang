@@ -12,64 +12,39 @@ import {
   Globe,
   Database,
 } from 'lucide-react';
-import { getAuditReport } from '../utils/sqliteMock';
+
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [auditLogs, setAuditLogs] = useState([]);
+  const [stats, setStats] = useState({
+    totalMaster: 0,
+    trackedCount: 0,
+    auditTeridentifikasi: 0,
+    auditPerluVerifikasi: 0,
+    auditMismatch: 0,
+    avgAuditScore: 0
+  });
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchAudit = async () => {
-      const logs = await getAuditReport();
-      setAuditLogs(logs);
+    const fetchDashboardStats = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/dashboard-stats`);
+        if (!response.ok) throw new Error('Gagal memuat data dashboard');
+        const data = await response.json();
+        
+        setStats(data.stats);
+        setRecentActivities(data.recentActivities);
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    fetchAudit();
+    fetchDashboardStats();
   }, []);
-
-  const stats = useMemo(() => {
-    const totalLocal = auditLogs.length;
-    const trackedCount = auditLogs.filter(a => a.trackingData).length;
-
-    // Audit SQLite stats
-    const auditTeridentifikasi = auditLogs.filter(a => a.matchStatus === 'Teridentifikasi').length;
-    const auditPerluVerifikasi = auditLogs.filter(a => a.matchStatus && a.matchStatus.includes('Verifikasi')).length;
-    const auditMismatch = auditLogs.filter(a => a.matchStatus === 'Mismatch').length;
-    const avgAuditScore = totalLocal > 0
-      ? Math.round(auditLogs.reduce((sum, a) => sum + (a.confidenceScore || 0), 0) / totalLocal)
-      : 0;
-
-    return {
-      totalLocal, trackedCount, auditTeridentifikasi, auditPerluVerifikasi, auditMismatch, avgAuditScore,
-    };
-  }, [auditLogs]);
-
-  const recentActivities = useMemo(() => {
-    // Gabungkan aktivitas dari tracking simulator + audit logs
-    const trackingActs = auditLogs.filter(a => a.trackingData)
-      .map(r => {
-        return {
-          type: 'tracking',
-          nama: r.nama || 'Unknown',
-          status: r.matchStatus || 'Unknown',
-          detail: r.notes || 'Pelacakan Web Otomatis',
-          score: r.confidenceScore,
-          date: r.trackingData.tanggalPelacakan || r.timestamp,
-        };
-      });
-
-    const auditActs = auditLogs.map(a => ({
-      type: 'audit',
-      nama: a.nama,
-      status: a.matchStatus,
-      detail: `NIM ${a.nim} • PDDikti Verified`,
-      score: a.confidenceScore,
-      date: a.timestamp,
-    }));
-
-    return [...trackingActs, ...auditActs]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 6);
-  }, [auditLogs]);
 
   return (
     <div>
@@ -79,15 +54,15 @@ export default function Dashboard() {
           <div className="stat-card-header">
             <div className="stat-card-icon blue"><Users size={20} /></div>
           </div>
-          <div className="stat-card-value">{stats.totalLocal}</div>
-          <div className="stat-card-label">Total Data Master (SQLite)</div>
+          <div className="stat-card-value">{isLoading ? '...' : stats.totalMaster}</div>
+          <div className="stat-card-label">Total Data Master (Supabase)</div>
         </div>
 
         <div className="card stat-card green animate-in">
           <div className="stat-card-header">
             <div className="stat-card-icon green"><Database size={20} /></div>
           </div>
-          <div className="stat-card-value">{stats.trackedCount}</div>
+          <div className="stat-card-value">{isLoading ? '...' : stats.trackedCount}</div>
           <div className="stat-card-label">Telah Dilacak Web</div>
         </div>
 
@@ -95,7 +70,7 @@ export default function Dashboard() {
           <div className="stat-card-header">
             <div className="stat-card-icon purple"><Globe size={20} /></div>
           </div>
-          <div className="stat-card-value">{stats.auditTeridentifikasi}</div>
+          <div className="stat-card-value">{isLoading ? '...' : stats.auditTeridentifikasi}</div>
           <div className="stat-card-label">Terverifikasi Valid</div>
         </div>
 
@@ -103,7 +78,7 @@ export default function Dashboard() {
           <div className="stat-card-header">
             <div className="stat-card-icon amber"><AlertTriangle size={20} /></div>
           </div>
-          <div className="stat-card-value">{stats.auditPerluVerifikasi}</div>
+          <div className="stat-card-value">{isLoading ? '...' : stats.auditPerluVerifikasi}</div>
           <div className="stat-card-label">Perlu Verifikasi</div>
         </div>
       </div>
@@ -118,21 +93,29 @@ export default function Dashboard() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {[
-              { label: 'Teridentifikasi (Valid)', count: stats.auditTeridentifikasi, color: 'var(--accent-green)', pct: stats.totalLocal > 0 ? Math.round((stats.auditTeridentifikasi/stats.totalLocal)*100) : 0 },
-              { label: 'Perlu Verifikasi', count: stats.auditPerluVerifikasi, color: 'var(--accent-amber)', pct: stats.totalLocal > 0 ? Math.round((stats.auditPerluVerifikasi/stats.totalLocal)*100) : 0 },
-              { label: 'Mismatch (Tolak)', count: stats.auditMismatch, color: 'var(--accent-red)', pct: stats.totalLocal > 0 ? Math.round((stats.auditMismatch/stats.totalLocal)*100) : 0 },
-              { label: 'Belum Dilacak (Web)', count: stats.totalLocal - stats.trackedCount, color: 'var(--text-muted)', pct: stats.totalLocal > 0 ? Math.round(((stats.totalLocal - stats.trackedCount)/stats.totalLocal)*100) : 0 },
-            ].map((item) => (
+              { label: 'Teridentifikasi (Valid)', count: stats.auditTeridentifikasi, color: 'var(--accent-green)' },
+              { label: 'Perlu Verifikasi', count: stats.auditPerluVerifikasi, color: 'var(--accent-amber)' },
+              { label: 'Mismatch (Tolak)', count: stats.auditMismatch, color: 'var(--accent-red)' },
+              { label: 'Belum Dilacak (Web)', count: stats.totalMaster > stats.trackedCount ? stats.totalMaster - stats.trackedCount : 0, color: 'var(--text-muted)' },
+            ].map((item) => {
+              const rawPct = stats.totalMaster > 0 ? (item.count / stats.totalMaster) * 100 : 0;
+              // Format teks: jika < 1% tapi > 0, tampilkan desimal (misal 0.1%), selain itu bulatkan
+              const pctText = (rawPct > 0 && rawPct < 1) ? rawPct.toFixed(1) : Math.round(rawPct);
+              // Format lebar bar: minimal 1% agar tetap terlihat meskipun datanya kecil
+              const barWidth = item.count > 0 ? Math.max(1, rawPct) : 0;
+              
+              return (
               <div key={item.label}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                   <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{item.label}</span>
-                  <span style={{ fontSize: '12.5px', fontWeight: '600', color: item.color }}>{item.count} ({item.pct}%)</span>
+                  <span style={{ fontSize: '12.5px', fontWeight: '600', color: item.color }}>{isLoading ? '...' : `${item.count} (${pctText}%)`}</span>
                 </div>
                 <div className="confidence-bar">
-                  <div style={{ width: `${item.pct}%`, height: '100%', borderRadius: '3px', background: item.color, transition: 'width 0.6s ease' }}></div>
+                  <div style={{ width: `${barWidth}%`, height: '100%', borderRadius: '3px', background: item.color, transition: 'width 0.6s ease' }}></div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -145,15 +128,15 @@ export default function Dashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)' }}>
               <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Rata-rata Confidence Database</span>
-              <span className={`confidence-text ${stats.avgAuditScore >= 75 ? 'high' : stats.avgAuditScore >= 45 ? 'medium' : 'low'}`}>{stats.avgAuditScore}%</span>
+              <span className={`confidence-text ${stats.avgAuditScore >= 75 ? 'high' : stats.avgAuditScore >= 45 ? 'medium' : 'low'}`}>{isLoading ? '...' : `${stats.avgAuditScore}%`}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)' }}>
               <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Total Profil Dilacak Otomatis</span>
-              <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--accent-blue)' }}>{stats.trackedCount}</span>
+              <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--accent-blue)' }}>{isLoading ? '...' : stats.trackedCount}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)' }}>
-              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Total Record SQLite Lokal</span>
-              <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>{stats.totalLocal}</span>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Total Record Supabase</span>
+              <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>{isLoading ? '...' : stats.totalMaster}</span>
             </div>
           </div>
         </div>

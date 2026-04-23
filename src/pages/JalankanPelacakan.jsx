@@ -9,6 +9,7 @@ export default function JalankanPelacakan() {
   const [batasiKuota, setBatasiKuota] = useState('10');
   const [spesifikNIM, setSpesifikNIM] = useState('');
   const [tahunMasuk, setTahunMasuk] = useState('');
+  const [numWorkers, setNumWorkers] = useState('1');
 
   const logsEndRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -67,7 +68,7 @@ export default function JalankanPelacakan() {
     setIsRunning(true);
     setLogs([`[${new Date().toLocaleTimeString()}] 🚀 Memulai inisialisasi mesin pelacakan...`]);
 
-    let url = `/api/track/stream?status=${encodeURIComponent(targetStatus)}&`;
+    let url = `/api/track/stream?status=${encodeURIComponent(targetStatus)}&workers=${numWorkers}&`;
     if (spesifikNIM.trim()) {
       url += `nim=${spesifikNIM.trim()}`;
       setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] 🎯 Mode Target Tunggal: NIM ${spesifikNIM}`]);
@@ -157,6 +158,19 @@ export default function JalankanPelacakan() {
                 onChange={e => setBatasiKuota(e.target.value)} 
                 disabled={isRunning || spesifikNIM.length > 0}
               />
+            </div>
+
+            <div className="hacker-form-row">
+              <label>
+                <CheckCircle2 size={14} color="#a3ff00" /> Worker Paralel:
+              </label>
+              <select className="hacker-form-input" value={numWorkers} onChange={e => setNumWorkers(e.target.value)} disabled={isRunning || spesifikNIM.length > 0}>
+                <option value="1">1 (Sekuensial)</option>
+                <option value="2">2 Paralel</option>
+                <option value="3">3 Paralel</option>
+                <option value="4">4 Paralel</option>
+                <option value="5">5 Paralel</option>
+              </select>
             </div>
 
             <div className="hacker-form-row">

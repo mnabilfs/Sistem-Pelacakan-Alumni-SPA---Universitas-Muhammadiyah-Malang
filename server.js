@@ -440,6 +440,70 @@ app.get('/api/linkedin-results/export-csv', async (req, res) => {
   }
 });
 
+// ─── Dashboard Stats Endpoint ─────────────────────────────────────────────────
+
+app.get('/api/dashboard-stats', async (req, res) => {
+  try {
+    // 1. Total Master Data
+    const { count: totalMaster } = await supabase
+      .from('alumni_master')
+      .select('*', { count: 'exact', head: true });
+
+    // 2. Fetch all tracking evidences to calculate stats
+    const { data: evidences, error } = await supabase
+      .from('tracking_evidences')
+      .select('nama, nim, match_status, confidence_score, notes, timestamp')
+      .order('timestamp', { ascending: false });
+
+    if (error) throw error;
+
+    const trackedCount = evidences.length;
+    let auditTeridentifikasi = 0;
+    let auditPerluVerifikasi = 0;
+    let auditMismatch = 0;
+    let totalScore = 0;
+
+    const recentActivities = [];
+
+    evidences.forEach((ev, i) => {
+      const status = ev.match_status || '';
+      if (status === 'Teridentifikasi') auditTeridentifikasi++;
+      else if (status.includes('Verifikasi')) auditPerluVerifikasi++;
+      else if (status === 'Mismatch') auditMismatch++;
+
+      totalScore += ev.confidence_score || 0;
+
+      if (i < 6) {
+        recentActivities.push({
+          type: 'tracking',
+          nama: ev.nama || 'Unknown',
+          status: status || 'Unknown',
+          detail: ev.notes || 'Pelacakan Web Otomatis',
+          score: ev.confidence_score || 0,
+          date: ev.timestamp
+        });
+      }
+    });
+
+    const avgAuditScore = trackedCount > 0 ? Math.round(totalScore / trackedCount) : 0;
+
+    res.json({
+      stats: {
+        totalMaster: totalMaster || 0,
+        trackedCount,
+        auditTeridentifikasi,
+        auditPerluVerifikasi,
+        auditMismatch,
+        avgAuditScore
+      },
+      recentActivities
+    });
+  } catch (err) {
+    console.error('[dashboard-stats]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Tracking Stream Endpoint (SSE) ──────────────────────────────────────────
 
 // Global State untuk Background Job
@@ -477,6 +541,7 @@ app.get('/api/track/stream', (req, res) => {
     const limit = req.query.limit;
     const nim = req.query.nim;
     const status = req.query.status;
+    const workers = req.query.workers;
     
     const args = ['scraper/linkedin_scraper.py', '--headless'];
     
@@ -490,6 +555,10 @@ app.get('/api/track/stream', (req, res) => {
 
     if (status) {
       args.push('--status', status);
+    }
+
+    if (workers && parseInt(workers) > 1) {
+      args.push('--workers', workers);
     }
 
     args.unshift('-u'); // unbuffered
