@@ -9,6 +9,7 @@ lerna-debug.log*
 .env
 migrate*.js
 *.sqlite
+scraper/
 
 node_modules
 dist

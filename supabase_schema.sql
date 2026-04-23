@@ -1,20 +1,9 @@
--- Jalankan ini jika tabel tracking_evidences belum lengkap
--- (Run di Supabase Dashboard → SQL Editor)
+-- ============================================
+-- LinkedIn Tracking Columns — Jalankan di Supabase SQL Editor
+-- ============================================
 
-DROP TABLE IF EXISTS tracking_evidences;
-
-CREATE TABLE tracking_evidences (
-  id TEXT PRIMARY KEY,
-  timestamp TEXT,
-  nim TEXT,
-  nama TEXT,
-  pddikti_status TEXT,
-  confidence_score REAL,
-  match_status TEXT,
-  verified_by TEXT,
-  notes TEXT,
-  raw_data TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_evidence_nim ON tracking_evidences(nim);
-ALTER TABLE tracking_evidences DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tracking_evidences ADD COLUMN IF NOT EXISTS tempat_bekerja TEXT;
+ALTER TABLE tracking_evidences ADD COLUMN IF NOT EXISTS posisi TEXT;
+ALTER TABLE tracking_evidences ADD COLUMN IF NOT EXISTS kategori_pekerjaan TEXT;
+ALTER TABLE tracking_evidences ADD COLUMN IF NOT EXISTS url_linkedin TEXT;
+ALTER TABLE tracking_evidences ADD COLUMN IF NOT EXISTS sumber_data TEXT DEFAULT 'PDDikti';

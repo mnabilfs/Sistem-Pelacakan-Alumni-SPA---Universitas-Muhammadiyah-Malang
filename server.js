@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
+import { spawn } from 'child_process';
 
 // ─── Supabase Setup ────────────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -250,6 +251,10 @@ app.get('/api/evidence', async (req, res) => {
       confidenceScore: r.confidence_score,
       matchStatus: r.match_status,
       verifiedBy: r.verified_by,
+      tempatBekerja: r.tempat_bekerja,
+      kategoriPekerjaan: r.kategori_pekerjaan,
+      urlLinkedin: r.url_linkedin,
+      sumberData: r.sumber_data,
       rawData: r.raw_data ? (() => { try { return JSON.parse(r.raw_data); } catch { return null; } })() : null,
     }));
 
@@ -278,6 +283,10 @@ app.get('/api/evidence/:nim', async (req, res) => {
       confidenceScore: data.confidence_score,
       matchStatus: data.match_status,
       verifiedBy: data.verified_by,
+      tempatBekerja: data.tempat_bekerja,
+      kategoriPekerjaan: data.kategori_pekerjaan,
+      urlLinkedin: data.url_linkedin,
+      sumberData: data.sumber_data,
       rawData: data.raw_data ? (() => { try { return JSON.parse(data.raw_data); } catch { return null; } })() : null,
     });
   } catch (err) {
@@ -308,6 +317,7 @@ app.post('/api/evidence', async (req, res) => {
       verified_by: verificationResult.verifiedBy || 'SYSTEM_AUTO',
       notes: verificationResult.notes || '',
       raw_data: JSON.stringify({ pddikti: pddiktiData, local: localData }),
+      sumber_data: verificationResult.sumberData || 'PDDikti',
     });
 
     if (error) throw error;
@@ -327,6 +337,222 @@ app.delete('/api/evidence/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── LinkedIn Results Endpoint ──────────────────────────────────────────────────
+
+app.get('/api/linkedin-results', async (req, res) => {
+  try {
+    const search = (req.query.q || '').trim();
+    const kategori = (req.query.kategori || '').trim();
+    const status = (req.query.status || '').trim();
+    const offset = parseInt(req.query.offset) || 0;
+
+    let query = supabase
+      .from('tracking_evidences')
+      .select('*', { count: 'exact' })
+      .eq('sumber_data', 'LinkedIn Scraper')
+      .order('timestamp', { ascending: false });
+
+    if (search) {
+      query = query.or(`nama.ilike.%${search}%,nim.ilike.%${search}%,tempat_bekerja.ilike.%${search}%`);
+    }
+    if (kategori) {
+      query = query.eq('kategori_pekerjaan', kategori);
+    }
+    if (status) {
+      query = query.eq('match_status', status);
+    }
+
+    const { data, count, error } = await query.range(offset, offset + 99);
+    if (error) throw error;
+    const mapped = (data || []).map(r => ({
+      id: r.id,
+      nim: r.nim,
+      nama: r.nama,
+      email: r.email || '',
+      noHp: r.no_hp || '',
+      tempatBekerja: r.tempat_bekerja || '',
+      alamatBekerja: r.alamat_bekerja || '',
+      posisi: r.posisi || '',
+      kategoriPekerjaan: r.kategori_pekerjaan || '',
+      urlLinkedin: r.url_linkedin || '',
+      urlIg: r.url_ig || '',
+      urlFb: r.url_fb || '',
+      urlTiktok: r.url_tiktok || '',
+      sosmedTempatBekerja: r.sosmed_tempat_bekerja || '',
+      confidenceScore: r.confidence_score || 0,
+      matchStatus: r.match_status || '',
+      verifiedBy: r.verified_by || '',
+      notes: r.notes || '',
+      timestamp: r.timestamp,
+      sumberData: r.sumber_data || 'LinkedIn Scraper'
+    }));
+
+    res.json({ data: mapped, total: count || 0 });
+  } catch (err) {
+    console.error('[linkedin-results]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── CSV Export Endpoint ────────────────────────────────────────────────────────
+
+app.get('/api/linkedin-results/export-csv', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('tracking_evidences')
+      .select('nim, nama, pddikti_status, confidence_score, match_status, verified_by, notes, raw_data, tempat_bekerja, posisi, kategori_pekerjaan, url_linkedin, sumber_data, email, no_hp, alamat_bekerja, sosmed_tempat_bekerja, url_ig, url_fb, url_tiktok')
+      .eq('sumber_data', 'LinkedIn Scraper')
+      .order('nama', { ascending: true });
+
+    if (error) throw error;
+
+    const columns = [
+      'nim', 'nama', 'pddikti_status', 'confidence_score', 'match_status',
+      'verified_by', 'notes', 'raw_data', 'tempat_bekerja', 'posisi',
+      'kategori_pekerjaan', 'url_linkedin', 'sumber_data', 'email', 'no_hp',
+      'alamat_bekerja', 'sosmed_tempat_bekerja', 'url_ig', 'url_fb', 'url_tiktok'
+    ];
+
+    // Escape CSV value
+    const esc = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    let csv = '\uFEFF'; // BOM for Excel UTF-8
+    csv += columns.join(',') + '\n';
+    for (const row of (data || [])) {
+      csv += columns.map(col => esc(row[col])).join(',') + '\n';
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="laporan_jejak_alumni.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('[export-csv]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Tracking Stream Endpoint (SSE) ──────────────────────────────────────────
+
+// Global State untuk Background Job
+let activeProcess = null;
+let logCache = [];
+let isJobRunning = false;
+let activeClients = []; // Daftar client SSE yang sedang terhubung
+
+// Fungsi broadcast ke semua client
+const broadcastEvent = (data) => {
+  const message = `data: ${JSON.stringify(data)}\n\n`;
+  activeClients.forEach(client => client.write(message));
+};
+
+app.get('/api/track/stream', (req, res) => {
+  // Setup Headers untuk SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  // Daftarkan client baru
+  activeClients.push(res);
+
+  // Jika job sudah berjalan, kirim log lama ke client yang baru terhubung
+  if (isJobRunning && logCache.length > 0) {
+    logCache.forEach(logLine => {
+      res.write(`data: ${JSON.stringify({ log: logLine })}\n\n`);
+    });
+    // Jangan mulai proses baru jika sudah jalan
+  } else if (!isJobRunning && Object.keys(req.query).length > 0) {
+    // Memulai proses baru HANYA jika ada parameter (bukan cuma cek status)
+    isJobRunning = true;
+    logCache = []; // Bersihkan cache log lama
+    
+    const limit = req.query.limit;
+    const nim = req.query.nim;
+    const status = req.query.status;
+    
+    const args = ['scraper/linkedin_scraper.py', '--headless'];
+    
+    if (nim) {
+      args.push('--nim', nim);
+    } else if (limit) {
+      args.push('--limit', limit);
+    } else {
+      args.push('--limit', '10');
+    }
+
+    if (status) {
+      args.push('--status', status);
+    }
+
+    args.unshift('-u'); // unbuffered
+    const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' };
+    
+    activeProcess = spawn('python', args, { env });
+
+    activeProcess.stdout.on('data', (data) => {
+      const lines = data.toString('utf8').split('\n');
+      lines.forEach(line => {
+        const cleaned = line.replace(/\r/g, '').trim();
+        if (cleaned) {
+          logCache.push(cleaned);
+          broadcastEvent({ log: cleaned });
+        }
+      });
+    });
+
+    activeProcess.stderr.on('data', (data) => {
+      const lines = data.toString('utf8').split('\n');
+      lines.forEach(line => {
+        const cleaned = line.replace(/\r/g, '').trim();
+        if (cleaned) {
+          const warnMsg = `[WARNING/ERROR] ${cleaned}`;
+          logCache.push(warnMsg);
+          broadcastEvent({ log: warnMsg });
+        }
+      });
+    });
+
+    activeProcess.on('close', (code) => {
+      isJobRunning = false;
+      activeProcess = null;
+      const endMsg = `[SYSTEM] Proses pelacakan selesai dengan kode ${code}.`;
+      logCache.push(endMsg);
+      broadcastEvent({ log: endMsg, isDone: true });
+      // Setelah broadcast selesai, kita biarkan client tetap terbuka agar user bisa melihat log terakhir
+    });
+  } else if (!isJobRunning) {
+    // Jika tidak ada job dan cuma connect polosan (cek state), beri tahu isDone
+    res.write(`data: ${JSON.stringify({ log: '[SYSTEM] Idle.', isDone: true })}\n\n`);
+  }
+
+  // Jika koneksi dari klien terputus
+  req.on('close', () => {
+    // Hapus dari daftar client aktif
+    activeClients = activeClients.filter(c => c !== res);
+    // KITA TIDAK MEMATIKAN PROSES! Proses tetap berjalan di background
+  });
+});
+
+// Endpoint untuk menghentikan manual
+app.post('/api/track/stop', (req, res) => {
+  if (isJobRunning && activeProcess) {
+    activeProcess.kill();
+    isJobRunning = false;
+    activeProcess = null;
+    const stopMsg = `[SYSTEM] Pelacakan dihentikan secara manual oleh pengguna.`;
+    logCache.push(stopMsg);
+    broadcastEvent({ log: stopMsg, isDone: true });
+    return res.json({ success: true, message: 'Process stopped.' });
+  }
+  return res.json({ success: false, message: 'No process running.' });
 });
 
 // ─── Server Start ──────────────────────────────────────────────────────────────
