@@ -10,7 +10,8 @@ import {
   Globe,
   Database,
   LogOut,
-  UserCircle
+  UserCircle,
+  Bot
 } from 'lucide-react';
 
 const navItems = [
@@ -20,6 +21,7 @@ const navItems = [
   { to: '/parameter', label: 'Parameter Pelacakan', icon: Settings2 },
   { to: '/jalankan', label: 'Jalankan Pelacakan', icon: Radar },
   { to: '/laporan', label: 'Laporan Jejak Alumni', icon: FileBarChart },
+  { to: '/searching-grok', label: 'Searching Grok', icon: Bot },
   { to: '/jadwal', label: 'Jadwal Pelacakan', icon: CalendarClock },
   { to: '/audit', label: 'Log Audit (SQLite)', icon: Database },
 ];
@@ -35,6 +37,7 @@ const pageTitles = {
   '/parameter': 'Parameter Pelacakan',
   '/jalankan': 'Jalankan Pelacakan',
   '/laporan': 'Laporan Jejak Alumni',
+  '/searching-grok': 'Searching Grok',
   '/jadwal': 'Jadwal Pelacakan',
   '/audit': 'Log Audit Pelacakan',
 };

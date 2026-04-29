@@ -7,6 +7,7 @@ import ParameterPelacakan from './pages/ParameterPelacakan';
 import JadwalPelacakan from './pages/JadwalPelacakan';
 import JalankanPelacakan from './pages/JalankanPelacakan';
 import LaporanJejak from './pages/LaporanJejak';
+import SearchingGrok from './pages/SearchingGrok';
 import SearchAlumni from './pages/SearchAlumni';
 import AnalyzeProfile from './pages/AnalyzeProfile';
 import AuditReport from './pages/AuditReport';
@@ -50,6 +51,7 @@ function App() {
               <Route path="/jadwal" element={<JadwalPelacakan />} />
               <Route path="/jalankan" element={<JalankanPelacakan />} />
               <Route path="/laporan" element={<LaporanJejak />} />
+              <Route path="/searching-grok" element={<SearchingGrok />} />
               <Route path="/pddikti-search" element={<SearchAlumni />} />
               <Route path="/analyze/:nim" element={<AnalyzeProfile />} />
               <Route path="/audit" element={<AuditReport />} />

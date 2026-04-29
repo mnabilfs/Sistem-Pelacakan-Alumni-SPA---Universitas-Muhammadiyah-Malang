@@ -1,37 +1,37 @@
 import { useState, useEffect } from 'react';
 import {
-  FileBarChart,
   Search,
   ChevronLeft,
   ExternalLink,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   Eye,
   Briefcase,
   MapPin,
-  Linkedin,
   Filter,
   Loader2,
-  BarChart3,
   Building2,
   Users,
   RefreshCw,
   Download,
+  GraduationCap,
+  Mail,
+  Phone,
+  Globe,
+  BookOpen,
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
-export default function LaporanJejak() {
+export default function SearchingGrok() {
   const [data, setData] = useState([]);
   const [total, setTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterKategori, setFilterKategori] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterFakultas, setFilterFakultas] = useState('');
   const [offset, setOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [selectedAlumni, setSelectedAlumni] = useState(null);
+  const [fakultasList, setFakultasList] = useState([]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -39,15 +39,16 @@ export default function LaporanJejak() {
       const params = new URLSearchParams({
         q: searchQuery,
         kategori: filterKategori,
-        status: filterStatus,
+        fakultas: filterFakultas,
         offset: offset.toString(),
       });
-      const res = await fetch(`${API_BASE}/linkedin-results?${params}`);
+      const res = await fetch(`${API_BASE}/grok-results?${params}`);
       const json = await res.json();
       setData(json.data || []);
       setTotal(json.total || 0);
+      if (json.fakultasList) setFakultasList(json.fakultasList);
     } catch (err) {
-      console.error('Error fetching LinkedIn results:', err);
+      console.error('Error fetching Grok results:', err);
     } finally {
       setIsLoading(false);
     }
@@ -55,7 +56,7 @@ export default function LaporanJejak() {
 
   useEffect(() => {
     fetchData();
-  }, [offset, filterKategori, filterStatus]);
+  }, [offset, filterKategori, filterFakultas]);
 
   const handleSearch = () => {
     setOffset(0);
@@ -65,12 +66,12 @@ export default function LaporanJejak() {
   const exportCSV = async () => {
     setIsExporting(true);
     try {
-      const res = await fetch(`${API_BASE}/linkedin-results/export-csv`);
+      const res = await fetch(`${API_BASE}/grok-results/export-csv`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `laporan_jejak_alumni_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `searching_grok_${new Date().toISOString().slice(0,10)}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -86,21 +87,16 @@ export default function LaporanJejak() {
   // Statistik ringkasan
   const stats = {
     total: total,
-    teridentifikasi: data.filter(d => d.matchStatus === 'Teridentifikasi').length,
-    perluVerifikasi: data.filter(d => d.matchStatus === 'Perlu Verifikasi').length,
-    belumDitemukan: data.filter(d => d.matchStatus === 'Belum Ditemukan').length,
+    pns: data.filter(d => d.kategori === 'PNS').length,
+    swasta: data.filter(d => d.kategori === 'Swasta').length,
+    wirausaha: data.filter(d => d.kategori === 'Wirausaha').length,
   };
 
-  const getConfidenceLevel = (score) => {
-    if (score >= 70) return 'high';
-    if (score >= 40) return 'medium';
-    return 'low';
-  };
-
-  const getStatusBadgeClass = (status) => {
-    if (status === 'Teridentifikasi') return 'teridentifikasi';
-    if (status === 'Perlu Verifikasi') return 'perlu-verifikasi';
-    return 'belum-ditemukan';
+  const getKategoriBadge = (kategori) => {
+    if (kategori === 'PNS') return 'teridentifikasi';
+    if (kategori === 'Swasta') return 'perlu-verifikasi';
+    if (kategori === 'Wirausaha') return 'belum-ditemukan';
+    return '';
   };
 
   const totalPages = Math.ceil(total / 100);
@@ -122,28 +118,21 @@ export default function LaporanJejak() {
             <div>
               <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>{al.nama}</h2>
               <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                NIM: {al.nim} • Sumber: {al.sumberData}
+                NIM: {al.nim} • {al.program_studi} • {al.fakultas}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <span className={`confidence-text ${getConfidenceLevel(al.confidenceScore)}`} style={{ fontSize: '24px' }}>
-                {al.confidenceScore}%
+              <span className={`status-badge ${getKategoriBadge(al.kategori)}`} style={{ fontSize: '13px' }}>
+                {al.kategori || 'Tidak Diketahui'}
               </span>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Confidence Score</div>
             </div>
           </div>
-          <div className="confidence-bar" style={{ marginTop: '12px', height: '8px' }}>
-            <div className={`confidence-fill ${getConfidenceLevel(al.confidenceScore)}`} style={{ width: `${al.confidenceScore}%` }}></div>
-          </div>
           <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className={`status-badge ${getStatusBadgeClass(al.matchStatus)}`}>
-              {al.matchStatus === 'Teridentifikasi' && <CheckCircle2 size={12} />}
-              {al.matchStatus === 'Perlu Verifikasi' && <AlertTriangle size={12} />}
-              {al.matchStatus === 'Belum Ditemukan' && <XCircle size={12} />}
-              {al.matchStatus}
+            <span className="chip" style={{ fontSize: '12px' }}>
+              <GraduationCap size={12} /> Tahun Masuk: {al.tahun_masuk || '-'}
             </span>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Dilacak: {new Date(al.timestamp).toLocaleDateString('id-ID', { dateStyle: 'long' })}
+            <span className="chip" style={{ fontSize: '12px' }}>
+              <BookOpen size={12} /> Lulus: {al.tanggal_lulus || '-'}
             </span>
           </div>
         </div>
@@ -155,34 +144,28 @@ export default function LaporanJejak() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="detail-item">
                 <label>Tempat Bekerja </label>
-                <strong>{al.tempatBekerja || '-'}</strong>
+                <strong>{al.tempat_bekerja || '-'}</strong>
               </div>
               <div className="detail-item">
                 <label>Alamat Bekerja </label>
-                <strong>{al.alamatBekerja || '-'}</strong>
+                <strong>{al.alamat_bekerja || '-'}</strong>
               </div>
               <div className="detail-item">
                 <label>Posisi / Jabatan </label>
                 <strong>{al.posisi || '-'}</strong>
               </div>
               <div className="detail-item">
-                <label>Kategori Pekerjaan (PNS/Swasta/Wirausaha) </label>
-                <span className="chip" style={{ fontSize: '12px' }}>{al.kategoriPekerjaan || 'Tidak Diketahui'}</span>
+                <label>Kategori Pekerjaan </label>
+                <span className={`status-badge ${getKategoriBadge(al.kategori)}`} style={{ fontSize: '12px' }}>
+                  {al.kategori || 'Tidak Diketahui'}
+                </span>
               </div>
               <div className="detail-item">
                 <label>Sosial Media Tempat Bekerja </label>
-                {al.sosmedTempatBekerja ? (
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-                     {al.sosmedTempatBekerja.split(',').map((url, idx) => {
-                       const cleanUrl = url.trim();
-                       if (!cleanUrl) return null;
-                       return (
-                         <a key={idx} href={cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all', textDecoration: 'none' }}>
-                           <ExternalLink size={12} /> {cleanUrl}
-                         </a>
-                       );
-                     })}
-                   </div>
+                {al.sosmed_tempat_bekerja ? (
+                   <a href={al.sosmed_tempat_bekerja.match(/https?:\/\/\S+/)?.[0] || '#'} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all', textDecoration: 'none' }}>
+                     <ExternalLink size={12} /> {al.sosmed_tempat_bekerja}
+                   </a>
                 ) : '-'}
               </div>
             </div>
@@ -192,60 +175,33 @@ export default function LaporanJejak() {
             <div className="section-title"><Users size={18} /> Profil & Kontak Pribadi</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="detail-item">
-                <label>Email </label>
+                <label><Mail size={12} /> Email </label>
                 <strong>{al.email || '-'}</strong>
               </div>
               <div className="detail-item">
-                <label>No HP / WhatsApp </label>
-                <strong>{al.noHp || '-'}</strong>
+                <label><Phone size={12} /> No HP / WhatsApp </label>
+                <strong>{al.no_hp || '-'}</strong>
               </div>
               
-              <div style={{ marginTop: '8px', marginBottom: '4px', fontWeight: 'bold', fontSize: '13px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>Alamat Sosial Media:</div>
+              <div style={{ marginTop: '8px', marginBottom: '4px', fontWeight: 'bold', fontSize: '13px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>Sosial Media Pribadi:</div>
               
               <div className="detail-item">
-                <label>LinkedIn</label>
-                {al.urlLinkedin ? (
-                  <a href={al.urlLinkedin} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
-                    <ExternalLink size={12} /> {al.urlLinkedin}
-                  </a>
-                ) : '-'}
-              </div>
-              
-              <div className="detail-item">
-                <label>Instagram </label>
-                {al.urlIg ? (
-                  <a href={al.urlIg.startsWith('http') ? al.urlIg : `https://${al.urlIg}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
-                    <ExternalLink size={12} /> {al.urlIg}
-                  </a>
-                ) : '-'}
-              </div>
-              <div className="detail-item">
-                <label>Facebook </label>
-                {al.urlFb ? (
-                  <a href={al.urlFb.startsWith('http') ? al.urlFb : `https://${al.urlFb}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
-                    <ExternalLink size={12} /> {al.urlFb}
-                  </a>
-                ) : '-'}
-              </div>
-              <div className="detail-item">
-                <label>TikTok </label>
-                {al.urlTiktok ? (
-                  <a href={al.urlTiktok.startsWith('http') ? al.urlTiktok : `https://${al.urlTiktok}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
-                    <ExternalLink size={12} /> {al.urlTiktok}
+                <label>Sosmed</label>
+                {al.sosmed ? (
+                  <a href={al.sosmed.match(/https?:\/\/\S+/)?.[0] || '#'} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
+                    <ExternalLink size={12} /> {al.sosmed}
                   </a>
                 ) : '-'}
               </div>
 
               <div className="detail-item" style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
-                <label>Diverifikasi Oleh </label>
-                <strong>{al.verifiedBy}</strong>
+                <label>Fakultas</label>
+                <strong>{al.fakultas || '-'}</strong>
               </div>
-              {al.notes && (
-                <div className="detail-item">
-                  <label>Catatan</label>
-                  <div style={{ fontSize: '13px', background: 'var(--bg-input)', padding: '10px', borderRadius: '6px' }}>{al.notes}</div>
-                </div>
-              )}
+              <div className="detail-item">
+                <label>Program Studi</label>
+                <strong>{al.program_studi || '-'}</strong>
+              </div>
             </div>
           </div>
         </div>
@@ -261,38 +217,38 @@ export default function LaporanJejak() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' }}>
         <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Linkedin size={20} style={{ color: '#0077B5' }} />
+            <Globe size={20} style={{ color: '#3b82f6' }} />
           </div>
           <div>
             <div style={{ fontSize: '22px', fontWeight: '800' }}>{total}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Total Hasil LinkedIn</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Total Data Grok</div>
           </div>
         </div>
         <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircle2 size={20} style={{ color: 'var(--accent-green)' }} />
+            <Building2 size={20} style={{ color: 'var(--accent-green)' }} />
           </div>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-green)' }}>{stats.teridentifikasi}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Teridentifikasi</div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-green)' }}>{stats.pns}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>PNS</div>
           </div>
         </div>
         <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <AlertTriangle size={20} style={{ color: 'var(--accent-amber)' }} />
+            <Briefcase size={20} style={{ color: 'var(--accent-amber)' }} />
           </div>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-amber)' }}>{stats.perluVerifikasi}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Perlu Verifikasi</div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-amber)' }}>{stats.swasta}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Swasta</div>
           </div>
         </div>
         <div className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <XCircle size={20} style={{ color: 'var(--accent-red)' }} />
+            <Users size={20} style={{ color: 'var(--accent-red)' }} />
           </div>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-red)' }}>{stats.belumDitemukan}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Belum Ditemukan</div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-red)' }}>{stats.wirausaha}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Wirausaha</div>
           </div>
         </div>
       </div>
@@ -315,13 +271,12 @@ export default function LaporanJejak() {
             <option value="PNS">PNS</option>
             <option value="Swasta">Swasta</option>
             <option value="Wirausaha">Wirausaha</option>
-            <option value="Tidak Diketahui">Tidak Diketahui</option>
           </select>
-          <select className="form-select" style={{ width: '180px' }} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setOffset(0); }}>
-            <option value="">Semua Status</option>
-            <option value="Teridentifikasi">Teridentifikasi</option>
-            <option value="Perlu Verifikasi">Perlu Verifikasi</option>
-            <option value="Belum Ditemukan">Belum Ditemukan</option>
+          <select className="form-select" style={{ width: '200px' }} value={filterFakultas} onChange={e => { setFilterFakultas(e.target.value); setOffset(0); }}>
+            <option value="">Semua Fakultas</option>
+            {fakultasList.map(f => (
+              <option key={f} value={f}>{f}</option>
+            ))}
           </select>
         </div>
         <div className="toolbar-right">
@@ -342,20 +297,16 @@ export default function LaporanJejak() {
         <div className="card">
           <div className="empty-state">
             <Loader2 size={40} className="spinner" style={{ color: 'var(--accent-blue)', margin: '0 auto 16px' }} />
-            <h3>Memuat Data LinkedIn...</h3>
+            <h3>Memuat Data Grok...</h3>
           </div>
         </div>
       ) : data.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <Linkedin size={44} style={{ opacity: 0.3, margin: '0 auto 16px' }} />
-            <h3>Belum Ada Data LinkedIn</h3>
+            <Globe size={44} style={{ opacity: 0.3, margin: '0 auto 16px' }} />
+            <h3>Belum Ada Data Grok</h3>
             <p style={{ maxWidth: '400px', margin: '8px auto 0' }}>
-              Jalankan scraper Python untuk mulai melacak alumni di LinkedIn.
-              <br/>
-              <code style={{ fontSize: '12px', display: 'block', margin: '12px auto', background: 'var(--bg-input)', padding: '8px', borderRadius: '6px' }}>
-                cd scraper && python linkedin_scraper.py --limit 10
-              </code>
+              Import data CSV terlebih dahulu melalui script import.
             </p>
           </div>
         </div>
@@ -365,14 +316,15 @@ export default function LaporanJejak() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Alumni</th>
+                  <th>Nama Lulusan</th>
                   <th>NIM</th>
+                  <th>Tahun Masuk</th>
+                  <th>Fakultas</th>
+                  <th>Program Studi</th>
                   <th>Tempat Bekerja</th>
                   <th>Posisi</th>
                   <th>Kategori</th>
-                  <th>Status</th>
-                  <th>Confidence</th>
-                  <th>LinkedIn</th>
+                  <th>Email</th>
                   <th>Aksi</th>
                 </tr>
               </thead>
@@ -381,40 +333,26 @@ export default function LaporanJejak() {
                   <tr key={r.id}>
                     <td style={{ fontWeight: '600', color: 'var(--text-primary)', maxWidth: '160px' }}>{r.nama}</td>
                     <td><code style={{ fontSize: '11px' }}>{r.nim}</code></td>
+                    <td>{r.tahun_masuk || '-'}</td>
+                    <td style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.fakultas || '-'}</td>
+                    <td style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.program_studi || '-'}</td>
                     <td style={{ maxWidth: '160px' }}>
-                      {r.tempatBekerja ? (
+                      {r.tempat_bekerja ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Building2 size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.tempatBekerja}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.tempat_bekerja}</span>
                         </div>
                       ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                     </td>
                     <td style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.posisi || '-'}</td>
                     <td>
-                      {r.kategoriPekerjaan ? (
-                        <span className="chip" style={{ fontSize: '11px' }}>{r.kategoriPekerjaan}</span>
+                      {r.kategori ? (
+                        <span className={`status-badge ${getKategoriBadge(r.kategori)}`} style={{ fontSize: '11px' }}>
+                          {r.kategori}
+                        </span>
                       ) : '-'}
                     </td>
-                    <td>
-                      <span className={`status-badge ${getStatusBadgeClass(r.matchStatus)}`} style={{ fontSize: '11px' }}>
-                        {r.matchStatus === 'Teridentifikasi' && <CheckCircle2 size={11} />}
-                        {r.matchStatus === 'Perlu Verifikasi' && <AlertTriangle size={11} />}
-                        {r.matchStatus === 'Belum Ditemukan' && <XCircle size={11} />}
-                        {r.matchStatus}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`confidence-text ${getConfidenceLevel(r.confidenceScore)}`} style={{ fontSize: '13px' }}>
-                        {r.confidenceScore}%
-                      </span>
-                    </td>
-                    <td>
-                      {r.urlLinkedin ? (
-                        <a href={r.urlLinkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0077B5' }}>
-                          <Linkedin size={16} />
-                        </a>
-                      ) : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                    </td>
+                    <td style={{ fontSize: '11px', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.email || '-'}</td>
                     <td>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelectedAlumni(r)}>
                         <Eye size={13} /> Detail

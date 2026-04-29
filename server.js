@@ -400,13 +400,25 @@ app.get('/api/linkedin-results', async (req, res) => {
 
 app.get('/api/linkedin-results/export-csv', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('tracking_evidences')
-      .select('nim, nama, pddikti_status, confidence_score, match_status, verified_by, notes, raw_data, tempat_bekerja, posisi, kategori_pekerjaan, url_linkedin, sumber_data, email, no_hp, alamat_bekerja, sosmed_tempat_bekerja, url_ig, url_fb, url_tiktok')
-      .eq('sumber_data', 'LinkedIn Scraper')
-      .order('nama', { ascending: true });
-
-    if (error) throw error;
+    const selectCols = 'nim, nama, pddikti_status, confidence_score, match_status, verified_by, notes, raw_data, tempat_bekerja, posisi, kategori_pekerjaan, url_linkedin, sumber_data, email, no_hp, alamat_bekerja, sosmed_tempat_bekerja, url_ig, url_fb, url_tiktok';
+    
+    // Fetch ALL data with pagination (Supabase limits 1000 per request)
+    let allData = [];
+    let offset = 0;
+    const batchSize = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('tracking_evidences')
+        .select(selectCols)
+        .eq('sumber_data', 'LinkedIn Scraper')
+        .order('nama', { ascending: true })
+        .range(offset, offset + batchSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allData = allData.concat(data);
+      if (data.length < batchSize) break;
+      offset += batchSize;
+    }
 
     const columns = [
       'nim', 'nama', 'pddikti_status', 'confidence_score', 'match_status',
@@ -415,7 +427,6 @@ app.get('/api/linkedin-results/export-csv', async (req, res) => {
       'alamat_bekerja', 'sosmed_tempat_bekerja', 'url_ig', 'url_fb', 'url_tiktok'
     ];
 
-    // Escape CSV value
     const esc = (val) => {
       if (val === null || val === undefined) return '';
       const str = String(val);
@@ -425,9 +436,9 @@ app.get('/api/linkedin-results/export-csv', async (req, res) => {
       return str;
     };
 
-    let csv = '\uFEFF'; // BOM for Excel UTF-8
+    let csv = '\uFEFF';
     csv += columns.join(',') + '\n';
-    for (const row of (data || [])) {
+    for (const row of allData) {
       csv += columns.map(col => esc(row[col])).join(',') + '\n';
     }
 
@@ -436,6 +447,100 @@ app.get('/api/linkedin-results/export-csv', async (req, res) => {
     res.send(csv);
   } catch (err) {
     console.error('[export-csv]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Grok Results Endpoints ─────────────────────────────────────────────────────
+
+app.get('/api/grok-results', async (req, res) => {
+  try {
+    const search = (req.query.q || '').trim();
+    const kategori = (req.query.kategori || '').trim();
+    const fakultas = (req.query.fakultas || '').trim();
+    const offset = parseInt(req.query.offset) || 0;
+
+    let query = supabase
+      .from('grok_results')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (search) {
+      query = query.or(`nama.ilike.%${search}%,nim.ilike.%${search}%,tempat_bekerja.ilike.%${search}%`);
+    }
+    if (kategori) {
+      query = query.eq('kategori', kategori);
+    }
+    if (fakultas) {
+      query = query.eq('fakultas', fakultas);
+    }
+
+    const { data, count, error } = await query.range(offset, offset + 99);
+    if (error) throw error;
+
+    // Ambil daftar fakultas unik untuk filter dropdown
+    const { data: fakData } = await supabase
+      .from('grok_results')
+      .select('fakultas')
+      .not('fakultas', 'is', null)
+      .order('fakultas', { ascending: true });
+
+    const fakultasList = [...new Set((fakData || []).map(r => r.fakultas).filter(Boolean))];
+
+    res.json({ data: data || [], total: count || 0, fakultasList });
+  } catch (err) {
+    console.error('[grok-results]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/grok-results/export-csv', async (req, res) => {
+  try {
+    const selectCols = 'nama, nim, tahun_masuk, tanggal_lulus, fakultas, program_studi, sosmed, email, no_hp, tempat_bekerja, alamat_bekerja, posisi, kategori, sosmed_tempat_bekerja';
+
+    // Fetch ALL data with pagination (Supabase limits 1000 per request)
+    let allData = [];
+    let offset = 0;
+    const batchSize = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('grok_results')
+        .select(selectCols)
+        .order('nama', { ascending: true })
+        .range(offset, offset + batchSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allData = allData.concat(data);
+      if (data.length < batchSize) break;
+      offset += batchSize;
+    }
+
+    const columns = [
+      'nama', 'nim', 'tahun_masuk', 'tanggal_lulus', 'fakultas', 'program_studi',
+      'sosmed', 'email', 'no_hp', 'tempat_bekerja', 'alamat_bekerja', 'posisi',
+      'kategori', 'sosmed_tempat_bekerja'
+    ];
+
+    const esc = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    let csv = '\uFEFF';
+    csv += columns.join(',') + '\n';
+    for (const row of allData) {
+      csv += columns.map(col => esc(row[col])).join(',') + '\n';
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="searching_grok_alumni.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('[grok-export-csv]', err);
     res.status(500).json({ error: err.message });
   }
 });
