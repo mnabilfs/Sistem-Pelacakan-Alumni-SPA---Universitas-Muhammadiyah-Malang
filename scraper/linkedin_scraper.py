@@ -927,9 +927,10 @@ def main():
             # Kumpulkan semua alumni yang perlu diproses
             alumni_to_process = []
             current_offset = args.offset
-            batch_size = 100
+            batch_size = 1000
             
             while len(alumni_to_process) < args.limit:
+                print(f"  ... mencari sisa kuota data di Supabase (skip {current_offset} data lama)")
                 query = supabase.table('alumni_master').select('nim, nama, program_studi')
                 if args.prodi:
                     query = query.ilike('program_studi', f'%{args.prodi}%')
