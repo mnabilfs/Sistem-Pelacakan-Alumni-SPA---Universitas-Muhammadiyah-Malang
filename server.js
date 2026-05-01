@@ -545,66 +545,274 @@ app.get('/api/grok-results/export-csv', async (req, res) => {
   }
 });
 
-// ─── Dashboard Stats Endpoint ─────────────────────────────────────────────────
+// ─── Dashboard Stats Endpoint (Enhanced) ──────────────────────────────────────
 
 app.get('/api/dashboard-stats', async (req, res) => {
   try {
-    // 1. Total Master Data
+    // 1. Total Alumni Master
     const { count: totalMaster } = await supabase
       .from('alumni_master')
       .select('*', { count: 'exact', head: true });
 
-    // 2. Fetch all tracking evidences to calculate stats
-    const { data: evidences, error } = await supabase
+    // 2. Total tracking_evidences (scraped data)
+    const { count: totalEvidence } = await supabase
       .from('tracking_evidences')
-      .select('nama, nim, match_status, confidence_score, notes, timestamp')
-      .order('timestamp', { ascending: false });
+      .select('*', { count: 'exact', head: true });
 
-    if (error) throw error;
+    // 3. Total grok_results (generated data)
+    const { count: totalGrok } = await supabase
+      .from('grok_results')
+      .select('*', { count: 'exact', head: true });
 
-    const trackedCount = evidences.length;
-    let auditTeridentifikasi = 0;
-    let auditPerluVerifikasi = 0;
-    let auditMismatch = 0;
-    let totalScore = 0;
+    // 4. Compute overall total alumni tercatat (gabungan unik dari evidence + grok)
+    const totalAlumni = (totalEvidence || 0) + (totalGrok || 0);
 
-    const recentActivities = [];
+    // 5. Coverage per-field — batch fetch semua data dari kedua tabel
+    // Fetch tracking_evidences fields (scraped)
+    let allEvidence = [];
+    let evOffset = 0;
+    while (true) {
+      const { data: batch } = await supabase
+        .from('tracking_evidences')
+        .select('url_linkedin, url_ig, url_fb, url_tiktok, email, no_hp, tempat_bekerja, posisi, sosmed_tempat_bekerja')
+        .range(evOffset, evOffset + 999);
+      if (!batch || batch.length === 0) break;
+      allEvidence = allEvidence.concat(batch);
+      if (batch.length < 1000) break;
+      evOffset += 1000;
+    }
 
-    evidences.forEach((ev, i) => {
-      const status = ev.match_status || '';
-      if (status === 'Teridentifikasi') auditTeridentifikasi++;
-      else if (status.includes('Verifikasi')) auditPerluVerifikasi++;
-      else if (status === 'Mismatch') auditMismatch++;
+    // Fetch grok_results fields (generated)
+    let allGrok = [];
+    let gkOffset = 0;
+    while (true) {
+      const { data: batch } = await supabase
+        .from('grok_results')
+        .select('sosmed, email, no_hp, tempat_bekerja, posisi, sosmed_tempat_bekerja, alamat_bekerja')
+        .range(gkOffset, gkOffset + 999);
+      if (!batch || batch.length === 0) break;
+      allGrok = allGrok.concat(batch);
+      if (batch.length < 1000) break;
+      gkOffset += 1000;
+    }
 
-      totalScore += ev.confidence_score || 0;
+    const scrapedCount = allEvidence.length;
+    const generatedCount = allGrok.length;
 
-      if (i < 6) {
-        recentActivities.push({
-          type: 'tracking',
-          nama: ev.nama || 'Unknown',
-          status: status || 'Unknown',
-          detail: ev.notes || 'Pelacakan Web Otomatis',
-          score: ev.confidence_score || 0,
-          date: ev.timestamp
-        });
-      }
-    });
+    // Helper: hitung jumlah baris yang field-nya terisi (non-null, non-empty)
+    const filled = (arr, ...fields) => arr.filter(r => fields.some(f => r[f] && r[f].trim && r[f].trim() !== '' && r[f].trim() !== '-')).length;
 
-    const avgAuditScore = trackedCount > 0 ? Math.round(totalScore / trackedCount) : 0;
+    // Per-field coverage dari KEDUA tabel digabung
+    const fieldCoverage = {
+      linkedin: {
+        count: filled(allEvidence, 'url_linkedin') + filled(allGrok, 'sosmed'),
+        scrapedCount: filled(allEvidence, 'url_linkedin'),
+      },
+      email: {
+        count: filled(allEvidence, 'email') + filled(allGrok, 'email'),
+        scrapedCount: filled(allEvidence, 'email'),
+      },
+      noHp: {
+        count: filled(allEvidence, 'no_hp') + filled(allGrok, 'no_hp'),
+        scrapedCount: filled(allEvidence, 'no_hp'),
+      },
+      tempatKerja: {
+        count: filled(allEvidence, 'tempat_bekerja') + filled(allGrok, 'tempat_bekerja'),
+        scrapedCount: filled(allEvidence, 'tempat_bekerja'),
+      },
+      posisi: {
+        count: filled(allEvidence, 'posisi') + filled(allGrok, 'posisi'),
+        scrapedCount: filled(allEvidence, 'posisi'),
+      },
+      sosmedTempatKerja: {
+        count: filled(allEvidence, 'sosmed_tempat_bekerja') + filled(allGrok, 'sosmed_tempat_bekerja'),
+        scrapedCount: filled(allEvidence, 'sosmed_tempat_bekerja'),
+      },
+      alamatKerja: {
+        count: filled(allEvidence, 'alamat_bekerja') + filled(allGrok, 'alamat_bekerja'),
+        scrapedCount: filled(allEvidence, 'alamat_bekerja') || 0,
+      },
+    };
+
+    // Accuracy = persentase data yang berasal dari scraping (data real)
+    const accuracy = totalAlumni > 0 ? Math.round((scrapedCount / totalAlumni) * 100) : 0;
+
+    // Coverage = persentase alumni yang memiliki minimal 1 data enrichment
+    const coverage = totalMaster > 0 ? Math.min(100, Math.round((totalAlumni / totalMaster) * 100)) : 0;
 
     res.json({
       stats: {
         totalMaster: totalMaster || 0,
-        trackedCount,
-        auditTeridentifikasi,
-        auditPerluVerifikasi,
-        auditMismatch,
-        avgAuditScore
+        totalAlumni,
+        scrapedCount,
+        generatedCount,
+        coverage,
+        accuracy,
+        fieldCoverage,
       },
-      recentActivities
     });
   } catch (err) {
     console.error('[dashboard-stats]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Dashboard Alumni Search Endpoint ─────────────────────────────────────────
+
+app.get('/api/dashboard-alumni', async (req, res) => {
+  try {
+    const search = (req.query.q || '').trim();
+    const fakultas = (req.query.fakultas || '').trim();
+    const prodi = (req.query.prodi || '').trim();
+    const sort = (req.query.sort || 'az'); // az, za
+    const offset = parseInt(req.query.offset) || 0;
+    const limit = 50;
+
+    // ── Step 1: Search tracking_evidences first ──
+    let evQuery = supabase
+      .from('tracking_evidences')
+      .select('nim, nama, email, no_hp, tempat_bekerja, posisi, kategori_pekerjaan, url_linkedin, confidence_score, match_status, sumber_data, timestamp', { count: 'exact' });
+
+    if (search) {
+      evQuery = evQuery.or(`nama.ilike.%${search}%,nim.ilike.%${search}%`);
+    }
+
+    evQuery = evQuery.order('nama', { ascending: sort !== 'za' });
+
+    const { data: evData, count: evCount, error: evError } = await evQuery.range(offset, offset + limit - 1);
+    if (evError) throw evError;
+
+    // Enrich with master data (fakultas, prodi, tahun_masuk)
+    let results = [];
+    if (evData && evData.length > 0) {
+      const nims = evData.map(e => e.nim).filter(Boolean);
+      let masterMap = {};
+      if (nims.length > 0) {
+        const { data: masterData } = await supabase
+          .from('alumni_master')
+          .select('nim, fakultas, program_studi, tahun_masuk')
+          .in('nim', nims);
+        if (masterData) {
+          masterData.forEach(m => { masterMap[m.nim.trim()] = m; });
+        }
+      }
+
+      // Also check grok_results for enrichment
+      let grokMap = {};
+      if (nims.length > 0) {
+        const { data: grokData } = await supabase
+          .from('grok_results')
+          .select('nim, fakultas, program_studi, tahun_masuk, email, no_hp, tempat_bekerja, posisi, kategori, sosmed')
+          .in('nim', nims);
+        if (grokData) {
+          grokData.forEach(g => { grokMap[(g.nim || '').trim()] = g; });
+        }
+      }
+
+      results = evData.map(ev => {
+        const master = masterMap[(ev.nim || '').trim()] || {};
+        const grok = grokMap[(ev.nim || '').trim()] || {};
+        // Count filled enrichment fields
+        const enrichFields = [ev.email, ev.no_hp, ev.tempat_bekerja, ev.posisi, ev.url_linkedin,
+                              grok.email, grok.no_hp, grok.tempat_bekerja, grok.posisi, grok.sosmed];
+        const uniqueFilled = new Set(enrichFields.filter(v => v && v.trim && v.trim() !== '' && v.trim() !== '-'));
+        const enrichScore = Math.min(100, Math.round((uniqueFilled.size / 5) * 100));
+
+        return {
+          nim: ev.nim,
+          nama: ev.nama,
+          fakultas: master.fakultas || grok.fakultas || '',
+          programStudi: master.program_studi || grok.program_studi || '',
+          tahunMasuk: master.tahun_masuk || grok.tahun_masuk || '',
+          tempatBekerja: ev.tempat_bekerja || grok.tempat_bekerja || '',
+          posisi: ev.posisi || grok.posisi || '',
+          enrichScore,
+          sumber: ev.sumber_data || 'Scraped',
+          confidenceScore: ev.confidence_score || 0,
+        };
+      });
+    }
+
+    let totalCount = evCount || 0;
+
+    // ── Step 2: If not enough results, also search grok_results ──
+    let grokResults = [];
+    if (results.length < limit) {
+      const remainingLimit = limit - results.length;
+      const existingNims = results.map(r => r.nim).filter(Boolean);
+
+      let grokQuery = supabase
+        .from('grok_results')
+        .select('nim, nama, fakultas, program_studi, tahun_masuk, email, no_hp, tempat_bekerja, posisi, kategori, sosmed, sosmed_tempat_bekerja', { count: 'exact' });
+
+      if (search) {
+        grokQuery = grokQuery.or(`nama.ilike.%${search}%,nim.ilike.%${search}%`);
+      }
+      if (fakultas) {
+        grokQuery = grokQuery.ilike('fakultas', `%${fakultas}%`);
+      }
+      if (prodi) {
+        grokQuery = grokQuery.ilike('program_studi', `%${prodi}%`);
+      }
+
+      // Exclude NIMs already found in evidence
+      if (existingNims.length > 0) {
+        // Use not.in filter
+        grokQuery = grokQuery.not('nim', 'in', `(${existingNims.join(',')})`);
+      }
+
+      grokQuery = grokQuery.order('nama', { ascending: sort !== 'za' });
+
+      const grokOffset = Math.max(0, offset - (evCount || 0));
+      const { data: gData, count: gCount, error: gErr } = await grokQuery.range(0, remainingLimit - 1);
+      if (gErr) console.error('[dashboard-alumni grok fallback]', gErr);
+
+      if (gData && gData.length > 0) {
+        grokResults = gData.map(g => {
+          const enrichFields = [g.email, g.no_hp, g.tempat_bekerja, g.posisi, g.sosmed];
+          const filled = enrichFields.filter(v => v && v.trim && v.trim() !== '' && v.trim() !== '-').length;
+          const enrichScore = Math.min(100, Math.round((filled / 5) * 100));
+          return {
+            nim: g.nim,
+            nama: g.nama,
+            fakultas: g.fakultas || '',
+            programStudi: g.program_studi || '',
+            tahunMasuk: g.tahun_masuk || '',
+            tempatBekerja: g.tempat_bekerja || '',
+            posisi: g.posisi || '',
+            enrichScore,
+            sumber: 'Generated',
+            confidenceScore: enrichScore,
+          };
+        });
+        totalCount += (gCount || 0);
+      }
+    }
+
+    // Apply fakultas/prodi filter on final results (for evidence data which doesn't have these columns)
+    let finalResults = [...results, ...grokResults];
+    if (fakultas) {
+      finalResults = finalResults.filter(r => r.fakultas && r.fakultas.toLowerCase().includes(fakultas.toLowerCase()));
+    }
+    if (prodi) {
+      finalResults = finalResults.filter(r => r.programStudi && r.programStudi.toLowerCase().includes(prodi.toLowerCase()));
+    }
+
+    // Get unique fakultas & prodi lists for filter dropdowns
+    const { data: fakData } = await supabase.from('alumni_master').select('fakultas').not('fakultas', 'is', null);
+    const { data: prodiData } = await supabase.from('alumni_master').select('program_studi').not('program_studi', 'is', null);
+
+    const fakultasList = [...new Set((fakData || []).map(r => r.fakultas).filter(Boolean))].sort();
+    const prodiList = [...new Set((prodiData || []).map(r => r.program_studi).filter(Boolean))].sort();
+
+    res.json({
+      data: finalResults,
+      total: totalCount,
+      fakultasList,
+      prodiList,
+    });
+  } catch (err) {
+    console.error('[dashboard-alumni]', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -731,19 +939,17 @@ app.post('/api/track/stop', (req, res) => {
 
 // ─── Server Start ──────────────────────────────────────────────────────────────
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => {
-    console.log(`
+app.listen(PORT, () => {
+  console.log(`
 =============================================
 🌍 Backend Proxy Terhubung! 
 => Database: Supabase PostgreSQL
 => PDDikti: pddikti.rone.dev
 Port: ${PORT}
 =============================================
-    `);
-  });
-}
+  `);
+});
 
 export default app;
