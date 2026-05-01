@@ -1,0 +1,6 @@
+playwright
+supabase
+python-dotenv
+requests
+cloudscraper
+beautifulsoup4
