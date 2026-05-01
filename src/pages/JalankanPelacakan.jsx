@@ -13,6 +13,8 @@ export default function JalankanPelacakan() {
 
   const logsEndRef = useRef(null);
   const eventSourceRef = useRef(null);
+  
+  const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
   const scrollToBottom = () => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -24,7 +26,7 @@ export default function JalankanPelacakan() {
 
   // Cek apakah ada job yang sedang berjalan di background saat komponen dimuat
   useEffect(() => {
-    let es = new EventSource('/api/track/stream');
+    let es = new EventSource(`${API_BASE}/track/stream`);
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
@@ -68,7 +70,7 @@ export default function JalankanPelacakan() {
     setIsRunning(true);
     setLogs([`[${new Date().toLocaleTimeString()}] 🚀 Memulai inisialisasi mesin pelacakan...`]);
 
-    let url = `/api/track/stream?status=${encodeURIComponent(targetStatus)}&workers=${numWorkers}&`;
+    let url = `${API_BASE}/track/stream?status=${encodeURIComponent(targetStatus)}&workers=${numWorkers}&`;
     if (spesifikNIM.trim()) {
       url += `nim=${spesifikNIM.trim()}`;
       setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] 🎯 Mode Target Tunggal: NIM ${spesifikNIM}`]);
@@ -109,7 +111,7 @@ export default function JalankanPelacakan() {
     setIsRunning(false);
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ⏹️ Mengirim sinyal berhenti ke server...`]);
     try {
-      await fetch('/api/track/stop', { method: 'POST' });
+      await fetch(`${API_BASE}/track/stop`, { method: 'POST' });
     } catch (err) {
       console.error(err);
     }
