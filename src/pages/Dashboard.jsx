@@ -6,6 +6,7 @@ import {
   BarChart3,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   Eye,
   Loader2,
   GraduationCap,
@@ -17,6 +18,10 @@ import {
   Globe,
   MapPin,
   Database,
+  ExternalLink,
+  Users,
+  BookOpen,
+  AlertTriangle,
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -32,9 +37,13 @@ export default function Dashboard() {
   const [filterFakultas, setFilterFakultas] = useState('');
   const [filterProdi, setFilterProdi] = useState('');
   const [sortOrder, setSortOrder] = useState('az');
+  const [filterSumber, setFilterSumber] = useState('');
   const [fakultasList, setFakultasList] = useState([]);
   const [prodiList, setProdiList] = useState([]);
   const [offset, setOffset] = useState(0);
+  const [selectedAlumni, setSelectedAlumni] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
   // ── Fetch Stats ──
   useEffect(() => {
@@ -61,6 +70,7 @@ export default function Dashboard() {
         fakultas: filterFakultas,
         prodi: filterProdi,
         sort: sortOrder,
+        sumber: filterSumber,
         offset: offset.toString(),
       });
       const res = await fetch(`${API_BASE}/dashboard-alumni?${params}`);
@@ -78,11 +88,29 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchAlumni();
-  }, [offset, filterFakultas, filterProdi, sortOrder]);
+  }, [offset, filterFakultas, filterProdi, sortOrder, filterSumber]);
 
   const handleSearch = () => {
     setOffset(0);
     fetchAlumni();
+  };
+
+  // ── Fetch Detail ──
+  const fetchDetail = async (al) => {
+    setSelectedAlumni(al);
+    setIsLoadingDetail(true);
+    setDetailData(null);
+    try {
+      const res = await fetch(`${API_BASE}/dashboard-alumni-detail/${al.nim}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDetailData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching detail:', err);
+    } finally {
+      setIsLoadingDetail(false);
+    }
   };
 
   // ── Field coverage items ──
@@ -107,6 +135,219 @@ export default function Dashboard() {
     if (score >= 25) return 'var(--accent-amber)';
     return 'var(--accent-red)';
   };
+
+  const getConfidenceLevel = (score) => {
+    if (score >= 70) return 'high';
+    if (score >= 40) return 'medium';
+    return 'low';
+  };
+
+  const getStatusBadgeClass = (status) => {
+    if (status === 'Teridentifikasi') return 'teridentifikasi';
+    if (status === 'Perlu Verifikasi') return 'perlu-verifikasi';
+    return 'belum-ditemukan';
+  };
+
+  // ─── Detail View ──────────────────────────────────────────────────────────────
+
+  if (selectedAlumni) {
+    const al = selectedAlumni;
+    // Tampilkan panel sesuai label ENRICHMENT di list (sumber)
+    const sc = al.sumber === 'Generated' ? null : detailData?.scraped;
+    const gen = al.sumber === 'Scraped' ? null : detailData?.generated;
+    const master = detailData?.master;
+
+    return (
+      <div>
+        <button className="btn btn-secondary" onClick={() => { setSelectedAlumni(null); setDetailData(null); }} style={{ marginBottom: '16px' }}>
+          <ChevronLeft size={16} /> Kembali ke Dashboard
+        </button>
+
+        {isLoadingDetail ? (
+          <div className="card">
+            <div className="empty-state" style={{ padding: '60px 0' }}>
+              <Loader2 size={40} className="spinner" style={{ color: 'var(--accent-blue)', margin: '0 auto 16px' }} />
+              <h3>Memuat Detail Alumni...</h3>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="card" style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>{al.nama}</h2>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    NIM: {al.nim} • {al.programStudi || master?.programStudi || '-'} • {al.fakultas || master?.fakultas || '-'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {sc && (
+                    <span style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 10px', borderRadius: '6px', background: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)' }}>
+                      SCRAPED
+                    </span>
+                  )}
+                  {gen && (
+                    <span style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 10px', borderRadius: '6px', background: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' }}>
+                      GENERATED
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="chip" style={{ fontSize: '12px' }}>
+                  <GraduationCap size={12} /> Tahun Masuk: {al.tahunMasuk || master?.tahunMasuk || gen?.tahunMasuk || '-'}
+                </span>
+                <span className="chip" style={{ fontSize: '12px' }}>
+                  <BookOpen size={12} /> Lulus: {master?.tanggalLulus || gen?.tanggalLulus || '-'}
+                </span>
+              </div>
+            </div>
+
+            {/* Data Panels */}
+            <div style={{ display: 'grid', gridTemplateColumns: sc && gen ? '1fr 1fr' : '1fr', gap: '16px', marginBottom: '16px' }}>
+
+              {/* Scraped Panel (from tracking_evidences) */}
+              {sc && (
+                <div className="card" style={{ borderTop: '4px solid var(--accent-green)' }}>
+                  <div className="section-title" style={{ marginBottom: '16px' }}>
+                    <CheckCircle2 size={18} style={{ color: 'var(--accent-green)' }} />
+                    Data Scraped (LinkedIn/Web)
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="detail-item"><label>Tempat Bekerja </label><strong>{sc.tempatBekerja || '-'}</strong></div>
+                    <div className="detail-item"><label>Alamat Bekerja </label><strong>{sc.alamatBekerja || '-'}</strong></div>
+                    <div className="detail-item"><label>Posisi / Jabatan </label><strong>{sc.posisi || '-'}</strong></div>
+                    <div className="detail-item">
+                      <label>Kategori Pekerjaan </label>
+                      <span className="chip" style={{ fontSize: '12px' }}>{sc.kategoriPekerjaan || 'Tidak Diketahui'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Sosmed Tempat Bekerja </label>
+                      {sc.sosmedTempatBekerja ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                          {sc.sosmedTempatBekerja.split(',').map((url, idx) => {
+                            const cleanUrl = url.trim();
+                            if (!cleanUrl) return null;
+                            return (
+                              <a key={idx} href={cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all', textDecoration: 'none' }}>
+                                <ExternalLink size={12} /> {cleanUrl}
+                              </a>
+                            );
+                          })}
+                        </div>
+                      ) : '-'}
+                    </div>
+
+                    <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>Kontak Pribadi</div>
+                      <div className="detail-item"><label><Mail size={12} /> Email </label><strong>{sc.email || '-'}</strong></div>
+                      <div className="detail-item"><label><Phone size={12} /> No HP </label><strong>{sc.noHp || '-'}</strong></div>
+                    </div>
+
+                    <div style={{ marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>Sosial Media</div>
+                      <div className="detail-item">
+                        <label><Linkedin size={12} /> LinkedIn </label>
+                        {sc.urlLinkedin ? (
+                          <a href={sc.urlLinkedin} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
+                            <ExternalLink size={12} /> {sc.urlLinkedin}
+                          </a>
+                        ) : '-'}
+                      </div>
+                      {sc.urlIg && <div className="detail-item"><label>Instagram</label><a href={sc.urlIg.startsWith('http') ? sc.urlIg : `https://${sc.urlIg}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}><ExternalLink size={12} /> {sc.urlIg}</a></div>}
+                      {sc.urlFb && <div className="detail-item"><label>Facebook</label><a href={sc.urlFb.startsWith('http') ? sc.urlFb : `https://${sc.urlFb}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}><ExternalLink size={12} /> {sc.urlFb}</a></div>}
+                      {sc.urlTiktok && <div className="detail-item"><label>TikTok</label><a href={sc.urlTiktok.startsWith('http') ? sc.urlTiktok : `https://${sc.urlTiktok}`} target="_blank" rel="noopener noreferrer" style={{ color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}><ExternalLink size={12} /> {sc.urlTiktok}</a></div>}
+                    </div>
+
+                    <div style={{ marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                      <div className="detail-item">
+                        <label>Status </label>
+                        {sc.matchStatus && <span className={`status-badge ${getStatusBadgeClass(sc.matchStatus)}`}>{sc.matchStatus}</span>}
+                      </div>
+                      <div className="detail-item">
+                        <label>Confidence </label>
+                        <span className={`confidence-text ${getConfidenceLevel(sc.confidenceScore)}`} style={{ fontSize: '14px' }}>{sc.confidenceScore}%</span>
+                      </div>
+                      <div className="detail-item"><label>Diverifikasi Oleh </label><strong>{sc.verifiedBy || '-'}</strong></div>
+                      {sc.notes && <div className="detail-item"><label>Catatan </label><div style={{ fontSize: '13px', background: 'var(--bg-input)', padding: '10px', borderRadius: '6px' }}>{sc.notes}</div></div>}
+                      <div className="detail-item"><label>Dilacak </label><strong>{sc.timestamp ? new Date(sc.timestamp).toLocaleDateString('id-ID', { dateStyle: 'long' }) : '-'}</strong></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Generated Panel (from grok_results) */}
+              {gen && (
+                <div className="card" style={{ borderTop: '4px solid var(--accent-amber)' }}>
+                  <div className="section-title" style={{ marginBottom: '16px' }}>
+                    <Database size={18} style={{ color: 'var(--accent-amber)' }} />
+                    Data Generated (Estimasi Prodi)
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="detail-item"><label>Tempat Bekerja </label><strong>{gen.tempatBekerja || '-'}</strong></div>
+                    <div className="detail-item"><label>Alamat Bekerja </label><strong>{gen.alamatBekerja || '-'}</strong></div>
+                    <div className="detail-item"><label>Posisi / Jabatan </label><strong>{gen.posisi || '-'}</strong></div>
+                    <div className="detail-item">
+                      <label>Kategori Pekerjaan </label>
+                      <span className="chip" style={{ fontSize: '12px' }}>{gen.kategori || 'Tidak Diketahui'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Sosmed Tempat Bekerja </label>
+                      {gen.sosmedTempatBekerja ? (
+                        <a href={gen.sosmedTempatBekerja.match(/https?:\/\/\S+/)?.[0] || '#'} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all', textDecoration: 'none' }}>
+                          <ExternalLink size={12} /> {gen.sosmedTempatBekerja}
+                        </a>
+                      ) : '-'}
+                    </div>
+
+                    <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>Kontak Pribadi</div>
+                      <div className="detail-item"><label><Mail size={12} /> Email </label><strong>{gen.email || '-'}</strong></div>
+                      <div className="detail-item"><label><Phone size={12} /> No HP </label><strong>{gen.noHp || '-'}</strong></div>
+                    </div>
+
+                    <div style={{ marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>Sosial Media Pribadi </div>
+                      <div className="detail-item">
+                        <label>Sosmed</label>
+                        {gen.sosmed ? (
+                          <a href={gen.sosmed.match(/https?:\/\/\S+/)?.[0] || '#'} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0077B5', fontSize: '12px', wordBreak: 'break-all' }}>
+                            <ExternalLink size={12} /> {gen.sosmed}
+                          </a>
+                        ) : '-'}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>Akademik</div>
+                      <div className="detail-item"><label>Fakultas </label><strong>{gen.fakultas || '-'}</strong></div>
+                      <div className="detail-item"><label>Program Studi </label><strong>{gen.programStudi || '-'}</strong></div>
+                      <div className="detail-item"><label>Tahun Masuk </label><strong>{gen.tahunMasuk || '-'}</strong></div>
+                      <div className="detail-item"><label>Tanggal Lulus </label><strong>{gen.tanggalLulus || '-'}</strong></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* No data found */}
+            {!sc && !gen && (
+              <div className="card">
+                <div className="empty-state" style={{ padding: '40px 0' }}>
+                  <AlertTriangle size={40} style={{ color: 'var(--accent-amber)', margin: '0 auto 12px' }} />
+                  <h3>Tidak Ada Data Enrichment</h3>
+                  <p>Alumni ini belum memiliki data scraped maupun generated.</p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
   const totalPages = Math.ceil(totalAlumniList / 50);
   const currentPage = Math.floor(offset / 50) + 1;
@@ -298,6 +539,14 @@ export default function Dashboard() {
             <option value="za">Nama Z–A</option>
           </select>
         </div>
+        <div>
+          <label style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>SUMBER</label>
+          <select className="form-select" value={filterSumber} onChange={e => { setFilterSumber(e.target.value); setOffset(0); }} style={{ width: '160px' }}>
+            <option value="">Semua Sumber</option>
+            <option value="Scraped">Scraped</option>
+            <option value="Generated">Generated</option>
+          </select>
+        </div>
         <div style={{ marginLeft: 'auto' }}>
           <label style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>SUMBER</label>
           <div style={{
@@ -358,20 +607,31 @@ export default function Dashboard() {
                     <td style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{al.programStudi || '-'}</td>
                     <td>{al.tahunMasuk || '-'}</td>
                     <td style={{ textAlign: 'center', minWidth: '120px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: getEnrichColor(al.enrichScore), marginBottom: '4px' }}>
-                        {al.enrichScore}%
-                      </div>
-                      <div style={{ width: '80px', height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden', margin: '0 auto 4px' }}>
-                        <div style={{ width: `${al.enrichScore}%`, height: '100%', borderRadius: '2px', background: getEnrichColor(al.enrichScore), transition: 'width 0.4s ease' }} />
-                      </div>
-                      <span style={{
-                        fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px',
-                        padding: '2px 6px', borderRadius: '4px',
-                        background: al.sumber === 'Generated' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
-                        color: al.sumber === 'Generated' ? 'var(--accent-amber)' : 'var(--accent-green)',
-                      }}>
-                        {al.sumber === 'Generated' ? 'GENERATED' : 'SCRAPED'}
-                      </span>
+                      {(() => {
+                        const sources = al.sources || [{ score: al.enrichScore, sumber: al.sumber }];
+                        // Jika ada Scraped, prioritaskan Scraped saja
+                        const scraped = sources.find(s => s.sumber === 'Scraped');
+                        const display = scraped || sources[0];
+                        const isGenerated = display.sumber === 'Generated';
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: getEnrichColor(display.score), lineHeight: 1 }}>
+                              {display.score}%
+                            </div>
+                            <div style={{ width: '80px', height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+                              <div style={{ width: `${display.score}%`, height: '100%', borderRadius: '2px', background: getEnrichColor(display.score), transition: 'width 0.4s ease' }} />
+                            </div>
+                            <span style={{
+                              fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px',
+                              padding: '2px 6px', borderRadius: '4px',
+                              background: isGenerated ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
+                              color: isGenerated ? 'var(--accent-amber)' : 'var(--accent-green)',
+                            }}>
+                              {isGenerated ? 'GENERATED' : 'SCRAPED'}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px' }}>
@@ -384,10 +644,10 @@ export default function Dashboard() {
                         </button>
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => navigate(`/analyze/${al.nim}`)}
+                          onClick={() => fetchDetail(al)}
                           style={{ fontSize: '11px' }}
                         >
-                          Detail →
+                          <Eye size={12} /> Detail
                         </button>
                       </div>
                     </td>

@@ -195,11 +195,11 @@ export default function SearchingGrok() {
               </div>
 
               <div className="detail-item" style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
-                <label>Fakultas</label>
+                <label>Fakultas </label>
                 <strong>{al.fakultas || '-'}</strong>
               </div>
               <div className="detail-item">
-                <label>Program Studi</label>
+                <label>Program Studi </label>
                 <strong>{al.program_studi || '-'}</strong>
               </div>
             </div>
